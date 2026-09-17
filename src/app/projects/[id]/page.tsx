@@ -76,9 +76,11 @@ export default function ProjectDetailPage() {
   });
 
   // Scope upload state
+  const [scopeTitle, setScopeTitle] = useState('');
   const [scopeFile, setScopeFile] = useState<File | null>(null);
   const [scopeSummary, setScopeSummary] = useState('');
   const [uploadingScope, setUploadingScope] = useState(false);
+  const [deletingScopeId, setDeletingScopeId] = useState<string | null>(null);
 
   // Time log state
   const [showLogTimeModal, setShowLogTimeModal] = useState(false);
@@ -290,7 +292,7 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // Scope document upload
+  // Scope document upload (supports multiple documents)
   const handleUploadScope = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scopeFile) return;
@@ -298,12 +300,14 @@ export default function ProjectDetailPage() {
     setUploadingScope(true);
     const formData = new FormData();
     formData.append('scopeFile', scopeFile);
+    formData.append('title', scopeTitle.trim() || scopeFile.name);
     formData.append('summary', scopeSummary);
 
     try {
       const res = await apiUpload(`/projects/${projectId}/scope`, formData);
       if (res.success) {
         setScopeFile(null);
+        setScopeTitle('');
         setScopeSummary('');
         fetchProjectData();
       }
@@ -311,6 +315,22 @@ export default function ProjectDetailPage() {
       console.error(err);
     } finally {
       setUploadingScope(false);
+    }
+  };
+
+  // Delete a specific scope document
+  const handleDeleteScope = async (scopeId: string) => {
+    if (!confirm('Are you sure you want to delete this scope document?')) return;
+    try {
+      setDeletingScopeId(scopeId);
+      const res = await apiDelete(`/projects/${projectId}/scope/${scopeId}`);
+      if (res.success) {
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error('Failed to delete scope document:', err);
+    } finally {
+      setDeletingScopeId(null);
     }
   };
 
@@ -459,7 +479,14 @@ export default function ProjectDetailPage() {
       <div className="flex items-center gap-2 border-b border-[#1F293D] overflow-x-auto pb-1">
         {[
           { id: 'jira', label: 'Jira Workspace', icon: LayoutGrid, count: tasks.length },
-          { id: 'scope', label: 'Project Scope & Specs', icon: FileText, count: project.scopeDocument?.fileUrl ? 'Attached' : null },
+          {
+            id: 'scope',
+            label: 'Project Scope & Specs',
+            icon: FileText,
+            count: project.scopeDocuments?.length
+              ? `${project.scopeDocuments.length} Specs`
+              : (project.scopeDocument?.fileUrl ? '1 Spec' : null),
+          },
           { id: 'credentials', label: 'Credentials Vault', icon: Key, count: project.credentials?.length || 0 },
           { id: 'timeline', label: 'Timeline & Milestones', icon: Calendar, count: `${project.completionPercentage}%` },
           { id: 'resources', label: 'Resource Allocation', icon: Users, count: project.assignedMembers?.length || 0 },
@@ -631,148 +658,220 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Tab 1: Project Scope & Specs */}
-      {activeTab === 'scope' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Attached Scope Document Card */}
-            <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="flex items-center justify-between border-b border-[#1F293D] pb-4">
+      {activeTab === 'scope' && (() => {
+        const scopeDocsList = (project.scopeDocuments && project.scopeDocuments.length > 0)
+          ? project.scopeDocuments
+          : (project.scopeDocument?.fileName ? [project.scopeDocument] : []);
+
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              {/* Attached Scope Documents Card */}
+              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1F293D] pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-[#5470F4]" />
+                      <span>Project Scope & Specifications</span>
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Authorized deliverable specifications, contractual requirements & architecture outlines.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                      {scopeDocsList.length} {scopeDocsList.length === 1 ? 'Specification Document' : 'Specification Documents'}
+                    </span>
+                  </div>
+                </div>
+
+                {scopeDocsList.length > 0 ? (
+                  <div className="space-y-4">
+                    {scopeDocsList.map((doc: any, index: number) => {
+                      const docId = doc._id || `scope-${index}`;
+                      const isDeleting = deletingScopeId === docId;
+                      const isPdf = (doc.fileType?.includes('pdf') || doc.fileName?.toLowerCase().endsWith('.pdf'));
+                      const isWord = (doc.fileType?.includes('word') || doc.fileName?.toLowerCase().endsWith('.doc') || doc.fileName?.toLowerCase().endsWith('.docx'));
+
+                      return (
+                        <div
+                          key={docId}
+                          className="bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 rounded-2xl p-5 space-y-4 transition-all"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                            <div className="flex items-start gap-3.5">
+                              <div
+                                className={`p-3 rounded-xl border flex-shrink-0 ${
+                                  isPdf
+                                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                    : isWord
+                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                    : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                }`}
+                              >
+                                <FileText className="w-6 h-6" />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-sm font-bold text-white">
+                                    {doc.title || doc.originalName || doc.fileName}
+                                  </h4>
+                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0B0F19] border border-[#1F293D] text-gray-400">
+                                    {isPdf ? 'PDF' : isWord ? 'DOCX' : 'DOCUMENT'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400 font-mono break-all">
+                                  {doc.originalName || doc.fileName}
+                                </p>
+                                <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
+                                  <span>Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                                  {doc.fileSize ? (
+                                    <span>• {(doc.fileSize / (1024 * 1024)).toFixed(2)} MB</span>
+                                  ) : null}
+                                  {doc.uploadedBy?.name && (
+                                    <span>• By {doc.uploadedBy.name}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-start flex-shrink-0">
+                              <a
+                                href={`${BASE_URL}${doc.fileUrl}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3.5 py-2 rounded-xl text-xs font-semibold gradient-btn text-white flex items-center gap-1.5 shadow-md shadow-[#5470F4]/20 hover:scale-[1.02] transition-all"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>View / Download</span>
+                              </a>
+
+                              {hasRole('CEO', 'Project Manager') && (
+                                <button
+                                  onClick={() => handleDeleteScope(docId)}
+                                  disabled={isDeleting}
+                                  className="p-2 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-[#1F293D] hover:border-rose-500/30 transition-all disabled:opacity-50"
+                                  title="Delete document"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {doc.summary && (
+                            <div className="border-t border-[#1F293D] pt-3">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+                                Scope Summary & Objectives:
+                              </span>
+                              <p className="text-xs text-gray-300 leading-relaxed bg-[#0B0F19] p-3 rounded-xl border border-[#1F293D]">
+                                {doc.summary}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-10 text-center bg-[#161F30]/40 rounded-2xl border border-dashed border-[#1F293D] space-y-2">
+                    <FileText className="w-10 h-10 text-gray-500 mx-auto" />
+                    <p className="text-xs font-semibold text-white">No scope documents attached yet</p>
+                    <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                      Attach signed project specifications, architecture blueprints, or contracts using the upload form.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Scope Deliverables & Key Objectives */}
+              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
+                <h3 className="text-base font-bold text-white">Deliverable Standards & Objectives</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-xl bg-[#161F30]/60 border border-[#1F293D] flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <strong className="text-white block">Production Reliability SLA</strong>
+                      <span className="text-gray-400">99.9% uptime architecture with failover logic.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-[#161F30]/60 border border-[#1F293D] flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <strong className="text-white block">Documentation & API Spec</strong>
+                      <span className="text-gray-400">Comprehensive hand-off guides and schema definitions.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Upload New Scope Sidebar */}
+            {hasRole('CEO', 'Project Manager') && (
+              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 shadow-xl space-y-5 h-fit">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-[#5470F4]" />
-                    <span>Official Project Scope Document</span>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-[#5CC5FA]" />
+                    <span>Attach Scope Document</span>
                   </h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Authorized deliverable specifications, contractual requirements & architecture outlines.
-                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Upload technical specifications, contracts, or architecture blueprints.</p>
                 </div>
-                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                  PDF / DOC Verified
-                </span>
+
+                <form onSubmit={handleUploadScope} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1">
+                      Document Title / Label <span className="text-gray-500 font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={scopeTitle}
+                      onChange={(e) => setScopeTitle(e.target.value)}
+                      placeholder="e.g., Technical Architecture Spec v2.0"
+                      className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl p-2.5 text-xs text-white outline-none"
+                    />
+                  </div>
+
+                  <div className="border-2 border-dashed border-[#1F293D] hover:border-[#5470F4] rounded-2xl p-6 text-center cursor-pointer transition-colors relative">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt"
+                      required
+                      onChange={(e) => setScopeFile(e.target.files ? e.target.files[0] : null)}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <span className="text-xs font-bold text-white block truncate px-2">
+                      {scopeFile ? scopeFile.name : 'Click to select document'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-1 block">PDF, DOC, DOCX up to 15MB</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1">Version Notes / Summary</label>
+                    <textarea
+                      rows={3}
+                      value={scopeSummary}
+                      onChange={(e) => setScopeSummary(e.target.value)}
+                      placeholder="Brief summary of deliverables or changes..."
+                      className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl p-3 text-xs text-white outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={uploadingScope || !scopeFile}
+                    className="w-full py-2.5 rounded-xl text-xs font-bold gradient-btn text-white disabled:opacity-50 flex items-center justify-center gap-2 shadow-md shadow-[#5470F4]/20"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{uploadingScope ? 'Uploading Document...' : 'Attach Scope Document'}</span>
+                  </button>
+                </form>
               </div>
-
-              {project.scopeDocument?.fileName ? (
-                <div className="bg-[#161F30] border border-[#1F293D] rounded-2xl p-5 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20">
-                        <FileText className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">
-                          {project.scopeDocument.originalName || project.scopeDocument.fileName}
-                        </h4>
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          Uploaded: {new Date(project.scopeDocument.uploadedAt).toLocaleDateString()} •{' '}
-                          {(project.scopeDocument.fileSize / (1024 * 1024)).toFixed(2)} MB
-                        </p>
-                      </div>
-                    </div>
-
-                    <a
-                      href={`${BASE_URL}${project.scopeDocument.fileUrl}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-xl text-xs font-semibold gradient-btn text-white flex items-center gap-2 shadow-md shadow-[#5470F4]/20 hover:scale-[1.02] transition-all"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Download File</span>
-                    </a>
-                  </div>
-
-                  {project.scopeDocument.summary && (
-                    <div className="border-t border-[#1F293D] pt-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
-                        Executive Scope Summary:
-                      </span>
-                      <p className="text-xs text-gray-300 leading-relaxed bg-[#0B0F19] p-3 rounded-xl border border-[#1F293D]">
-                        {project.scopeDocument.summary}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-8 text-center bg-[#161F30]/40 rounded-2xl border border-dashed border-[#1F293D] space-y-2">
-                  <FileText className="w-10 h-10 text-gray-500 mx-auto" />
-                  <p className="text-xs font-semibold text-white">No scope document uploaded yet</p>
-                  <p className="text-xs text-gray-400">Attach the signed project specification or proposal PDF.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Scope Deliverables & Key Objectives */}
-            <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
-              <h3 className="text-base font-bold text-white">Key Deliverable Objectives</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-xl bg-[#161F30]/60 border border-[#1F293D] flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <strong className="text-white block">Production Reliability SLA</strong>
-                    <span className="text-gray-400">99.9% uptime architecture with failover logic.</span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#161F30]/60 border border-[#1F293D] flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <strong className="text-white block">Documentation & API Spec</strong>
-                    <span className="text-gray-400">Comprehensive hand-off guides and schema definitions.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
-
-          {/* Upload New Scope Sidebar */}
-          {hasRole('CEO', 'Project Manager') && (
-            <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 shadow-xl space-y-5 h-fit">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-[#5CC5FA]" />
-                  <span>Update Scope Attachment</span>
-                </h3>
-                <p className="text-xs text-gray-400 mt-1">Upload a revised PDF or Word document for this project.</p>
-              </div>
-
-              <form onSubmit={handleUploadScope} className="space-y-4">
-                <div className="border-2 border-dashed border-[#1F293D] hover:border-[#5470F4] rounded-2xl p-6 text-center cursor-pointer transition-colors relative">
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt"
-                    required
-                    onChange={(e) => setScopeFile(e.target.files ? e.target.files[0] : null)}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <span className="text-xs font-bold text-white block">
-                    {scopeFile ? scopeFile.name : 'Click to browse document'}
-                  </span>
-                  <span className="text-[10px] text-gray-500 mt-1 block">PDF, DOC, DOCX up to 25MB</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1">Version Notes / Summary</label>
-                  <textarea
-                    rows={3}
-                    value={scopeSummary}
-                    onChange={(e) => setScopeSummary(e.target.value)}
-                    placeholder="Brief description of revisions..."
-                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl p-3 text-xs text-white outline-none"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={uploadingScope || !scopeFile}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold gradient-btn text-white disabled:opacity-50"
-                >
-                  {uploadingScope ? 'Uploading Document...' : 'Upload Scope File'}
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Tab 2: Credentials Vault */}
       {activeTab === 'credentials' && (

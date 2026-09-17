@@ -270,10 +270,12 @@ function ProjectsContent() {
 
                   {/* Scope & Credentials Badge Indicators */}
                   <div className="flex items-center gap-2 pt-1">
-                    {proj.scopeDocument?.fileUrl ? (
+                    {(proj.scopeDocuments && proj.scopeDocuments.length > 0) || proj.scopeDocument?.fileUrl ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/20 flex items-center gap-1">
                         <FileText className="w-3 h-3" />
-                        Scope Attached
+                        {proj.scopeDocuments?.length > 1
+                          ? `${proj.scopeDocuments.length} Scopes Attached`
+                          : 'Scope Attached'}
                       </span>
                     ) : (
                       <span className="text-[10px] text-gray-500">No scope file</span>
