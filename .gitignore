@@ -7,7 +7,6 @@ node_modules/
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
 # Next.js build output & cache
 .next/
 out/
