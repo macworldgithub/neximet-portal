@@ -4,7 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../../context/AuthContext';
-import { apiGet, apiPost, apiPut, apiDelete, apiUpload, BASE_URL } from '../../../lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiUpload, BASE_URL } from '../../../lib/api';
+import JiraBoard from '../../../components/jira/JiraBoard';
+import JiraBacklog from '../../../components/jira/JiraBacklog';
+import JiraRoadmap from '../../../components/jira/JiraRoadmap';
+import JiraIssueDetailModal from '../../../components/jira/JiraIssueDetailModal';
+import CreateIssueModal from '../../../components/jira/CreateIssueModal';
+import { JiraIssue } from '../../../components/jira/JiraIssueCard';
 import {
   FolderKanban,
   FileText,
@@ -28,6 +34,10 @@ import {
   Coins,
   Building2,
   Sparkles,
+  LayoutGrid,
+  ListFilter,
+  Search,
+  Filter,
 } from 'lucide-react';
 
 export default function ProjectDetailPage() {
@@ -40,7 +50,17 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'scope' | 'credentials' | 'timeline' | 'resources' | 'time'>('scope');
+  const [activeTab, setActiveTab] = useState<'jira' | 'scope' | 'credentials' | 'timeline' | 'resources' | 'time'>('jira');
+
+  // Jira Workspace State
+  const [jiraSubView, setJiraSubView] = useState<'board' | 'backlog' | 'roadmap'>('board');
+  const [selectedIssue, setSelectedIssue] = useState<JiraIssue | null>(null);
+  const [showCreateIssueModal, setShowCreateIssueModal] = useState(false);
+  const [createIssueDefaultStatus, setCreateIssueDefaultStatus] = useState<JiraIssue['status']>('todo');
+  const [jiraSearch, setJiraSearch] = useState('');
+  const [jiraTypeFilter, setJiraTypeFilter] = useState('all');
+  const [jiraAssigneeFilter, setJiraAssigneeFilter] = useState('all');
+  const [jiraPriorityFilter, setJiraPriorityFilter] = useState('all');
 
   // Vault state
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
@@ -113,6 +133,116 @@ export default function ProjectDetailPage() {
     fetchProjectData();
     fetchUsersForAssignment();
   }, [projectId]);
+
+  // Jira Handler Methods
+  const handleMoveStatus = async (issueId: string, targetStatus: JiraIssue['status']) => {
+    // Optimistic UI update
+    setTasks((prev) =>
+      prev.map((t) => (t._id === issueId ? { ...t, status: targetStatus } : t))
+    );
+
+    try {
+      const res = await apiPatch(`/tasks/${issueId}/status`, { status: targetStatus });
+      if (res.success && res.task) {
+        setTasks((prev) =>
+          prev.map((t) => (t._id === issueId ? res.task : t))
+        );
+        if (selectedIssue && selectedIssue._id === issueId) {
+          setSelectedIssue(res.task);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update task status:', err);
+    }
+  };
+
+  const handleQuickCreateIssue = async (title: string, issueType: JiraIssue['issueType']) => {
+    try {
+      const res = await apiPost('/tasks', {
+        project: projectId,
+        title,
+        issueType,
+        status: 'backlog',
+        priority: 'Medium',
+        storyPoints: 3,
+      });
+      if (res.success && res.task) {
+        setTasks((prev) => [...prev, res.task]);
+      }
+    } catch (err) {
+      console.error('Failed to quick create issue:', err);
+    }
+  };
+
+  const handleUpdateIssue = (updatedIssue: JiraIssue) => {
+    setTasks((prev) =>
+      prev.map((t) => (t._id === updatedIssue._id ? updatedIssue : t))
+    );
+    setSelectedIssue(updatedIssue);
+  };
+
+  const handleDeleteIssue = async (issueId: string) => {
+    try {
+      const res = await apiDelete(`/tasks/${issueId}`);
+      if (res.success) {
+        setTasks((prev) => prev.filter((t) => t._id !== issueId));
+        if (selectedIssue?._id === issueId) {
+          setSelectedIssue(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete issue:', err);
+    }
+  };
+
+  // Filtered Jira Issues
+  const filteredJiraIssues = tasks.filter((issue: any) => {
+    if (jiraSearch.trim()) {
+      const q = jiraSearch.trim().toLowerCase();
+      const matchTitle = issue.title?.toLowerCase().includes(q);
+      const matchKey = issue.issueKey?.toLowerCase().includes(q);
+      const matchDesc = issue.description?.toLowerCase().includes(q);
+      const matchLabels = issue.labels?.some((l: string) => l.toLowerCase().includes(q));
+      if (!matchTitle && !matchKey && !matchDesc && !matchLabels) return false;
+    }
+
+    if (jiraTypeFilter !== 'all' && issue.issueType !== jiraTypeFilter) {
+      return false;
+    }
+
+    if (jiraPriorityFilter !== 'all' && issue.priority !== jiraPriorityFilter) {
+      return false;
+    }
+
+    if (jiraAssigneeFilter === 'my') {
+      const myId = (user as any)?._id || (user as any)?.id;
+      const assignedId = issue.assignedTo?._id || issue.assignedTo;
+      if (assignedId !== myId) return false;
+    } else if (jiraAssigneeFilter !== 'all') {
+      const assignedId = issue.assignedTo?._id || issue.assignedTo;
+      if (assignedId !== jiraAssigneeFilter) return false;
+    }
+
+    return true;
+  });
+
+  // Assignable members pool
+  const assignableMembers = React.useMemo(() => {
+    const list: any[] = [];
+    if (project?.assignedMembers) {
+      project.assignedMembers.forEach((m: any) => {
+        if (m.user && !list.some((u) => u._id === m.user._id)) {
+          list.push({ ...m.user, role: m.roleInProject || m.user.role });
+        }
+      });
+    }
+    allUsers.forEach((u: any) => {
+      if (!list.some((existing) => existing._id === u._id)) {
+        list.push(u);
+      }
+    });
+    return list;
+  }, [project, allUsers]);
 
   // Handle revealing credentials
   const toggleRevealKey = (id: string) => {
@@ -328,6 +458,7 @@ export default function ProjectDetailPage() {
       {/* Tabs Navigation */}
       <div className="flex items-center gap-2 border-b border-[#1F293D] overflow-x-auto pb-1">
         {[
+          { id: 'jira', label: 'Jira Workspace', icon: LayoutGrid, count: tasks.length },
           { id: 'scope', label: 'Project Scope & Specs', icon: FileText, count: project.scopeDocument?.fileUrl ? 'Attached' : null },
           { id: 'credentials', label: 'Credentials Vault', icon: Key, count: project.credentials?.length || 0 },
           { id: 'timeline', label: 'Timeline & Milestones', icon: Calendar, count: `${project.completionPercentage}%` },
@@ -356,6 +487,148 @@ export default function ProjectDetailPage() {
           );
         })}
       </div>
+
+      {/* Tab 0: Jira Workspace (Kanban Board, Backlog, Roadmap) */}
+      {activeTab === 'jira' && (
+        <div className="space-y-6">
+          {/* Sub-view switcher & Global Jira filters bar */}
+          <div className="bg-[#111827] border border-[#1F293D] p-4 sm:p-5 rounded-3xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* View Mode Buttons */}
+            <div className="flex items-center gap-1.5 p-1 bg-[#0B0F19] rounded-2xl border border-[#1F293D]">
+              <button
+                onClick={() => setJiraSubView('board')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  jiraSubView === 'board'
+                    ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/20'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Kanban Board</span>
+              </button>
+
+              <button
+                onClick={() => setJiraSubView('backlog')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  jiraSubView === 'backlog'
+                    ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/20'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <ListFilter className="w-3.5 h-3.5" />
+                <span>Backlog</span>
+              </button>
+
+              <button
+                onClick={() => setJiraSubView('roadmap')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  jiraSubView === 'roadmap'
+                    ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/20'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Roadmap</span>
+              </button>
+            </div>
+
+            {/* Filter and Search Actions */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search issues..."
+                  value={jiraSearch}
+                  onChange={(e) => setJiraSearch(e.target.value)}
+                  className="pl-8 pr-3 py-2 rounded-xl bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] text-xs text-white placeholder:text-gray-500 outline-none w-36 sm:w-44"
+                />
+              </div>
+
+              {/* Type Filter */}
+              <select
+                value={jiraTypeFilter}
+                onChange={(e) => setJiraTypeFilter(e.target.value)}
+                className="text-xs font-semibold px-2.5 py-2 rounded-xl bg-[#0B0F19] border border-[#1F293D] text-gray-300 focus:border-[#5470F4] outline-none cursor-pointer"
+              >
+                <option value="all">All Types</option>
+                <option value="story">Story 📗</option>
+                <option value="task">Task 📘</option>
+                <option value="bug">Bug 🔴</option>
+                <option value="epic">Epic 🟪</option>
+              </select>
+
+              {/* "Only My Issues" toggle */}
+              <button
+                onClick={() => setJiraAssigneeFilter(jiraAssigneeFilter === 'my' ? 'all' : 'my')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  jiraAssigneeFilter === 'my'
+                    ? 'bg-[#5470F4]/20 border-[#5470F4] text-[#5CC5FA]'
+                    : 'bg-[#0B0F19] border-[#1F293D] text-gray-400 hover:text-white'
+                }`}
+              >
+                Only My Issues
+              </button>
+
+              {/* Priority Filter */}
+              <select
+                value={jiraPriorityFilter}
+                onChange={(e) => setJiraPriorityFilter(e.target.value)}
+                className="text-xs font-semibold px-2.5 py-2 rounded-xl bg-[#0B0F19] border border-[#1F293D] text-gray-300 focus:border-[#5470F4] outline-none cursor-pointer"
+              >
+                <option value="all">All Priorities</option>
+                <option value="Urgent">Urgent</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+                <option value="Lowest">Lowest</option>
+              </select>
+
+              {/* Create Issue Action */}
+              <button
+                onClick={() => {
+                  setCreateIssueDefaultStatus('todo');
+                  setShowCreateIssueModal(true);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold gradient-btn text-white flex items-center gap-1.5 shadow-md shadow-[#5470F4]/20 hover:scale-[1.02] transition-all ml-auto sm:ml-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Issue</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-view render */}
+          {jiraSubView === 'board' && (
+            <JiraBoard
+              issues={filteredJiraIssues}
+              onSelectIssue={setSelectedIssue}
+              onMoveStatus={handleMoveStatus}
+              onOpenCreateModal={(colStatus) => {
+                setCreateIssueDefaultStatus(colStatus || 'todo');
+                setShowCreateIssueModal(true);
+              }}
+            />
+          )}
+
+          {jiraSubView === 'backlog' && (
+            <JiraBacklog
+              issues={filteredJiraIssues}
+              onSelectIssue={setSelectedIssue}
+              onMoveStatus={handleMoveStatus}
+              onQuickCreate={handleQuickCreateIssue}
+            />
+          )}
+
+          {jiraSubView === 'roadmap' && (
+            <JiraRoadmap
+              issues={filteredJiraIssues}
+              onSelectIssue={setSelectedIssue}
+            />
+          )}
+        </div>
+      )}
 
       {/* Tab 1: Project Scope & Specs */}
       {activeTab === 'scope' && (
@@ -1094,6 +1367,31 @@ export default function ProjectDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Jira Issue Detail Slide-Over Modal */}
+      {selectedIssue && (
+        <JiraIssueDetailModal
+          issue={selectedIssue}
+          onClose={() => setSelectedIssue(null)}
+          onUpdateIssue={handleUpdateIssue}
+          onDeleteIssue={handleDeleteIssue}
+          teamMembers={assignableMembers}
+        />
+      )}
+
+      {/* Jira Create Issue Modal */}
+      {showCreateIssueModal && (
+        <CreateIssueModal
+          projectId={projectId}
+          projectCode={project.code}
+          defaultStatus={createIssueDefaultStatus}
+          onClose={() => setShowCreateIssueModal(false)}
+          onCreated={(newIssue) => {
+            setTasks((prev) => [newIssue, ...prev]);
+          }}
+          teamMembers={assignableMembers}
+        />
       )}
     </div>
   );

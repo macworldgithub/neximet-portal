@@ -73,6 +73,12 @@ export const apiPut = <T = any>(endpoint: string, body?: any) =>
     body: body ? JSON.stringify(body) : undefined,
   });
 
+export const apiPatch = <T = any>(endpoint: string, body?: any) =>
+  apiFetch<T>(endpoint, {
+    method: 'PATCH',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
 export const apiDelete = <T = any>(endpoint: string) =>
   apiFetch<T>(endpoint, { method: 'DELETE' });
 
