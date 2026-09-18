@@ -15,6 +15,7 @@ import {
   ChevronDown,
   KeyRound,
 } from 'lucide-react';
+import ForgotPasswordModal from '../../components/auth/ForgotPasswordModal';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [forgotModalOpen, setForgotModalOpen] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,9 +166,13 @@ export default function LoginPage() {
                 />
                 <span>Remember this terminal</span>
               </label>
-              <span className="text-gray-500 hover:text-gray-400 text-[11px] cursor-pointer">
-                Forgot password? Contact IT
-              </span>
+              <button
+                type="button"
+                onClick={() => setForgotModalOpen(true)}
+                className="text-[#5CC5FA] hover:text-[#7BCFFF] hover:underline text-[11px] cursor-pointer transition-colors"
+              >
+                Forgot password?
+              </button>
             </div>
 
             <div className="pt-2">
@@ -243,6 +249,12 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={forgotModalOpen}
+        onClose={() => setForgotModalOpen(false)}
+        initialEmail={email}
+      />
     </div>
   );
 }

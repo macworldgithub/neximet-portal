@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiGet, apiPost, getToken, setToken, removeToken } from '../lib/api';
 
-export type UserRole = 'CEO' | 'Project Manager' | 'Team Manager' | 'Team Member';
+export type UserRole = 'CEO' | 'Super Admin' | 'Project Manager' | 'Team Manager' | 'Team Member';
 export type Department =
   | 'Executive'
   | 'Software Development'
@@ -32,6 +32,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  isSuperAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -120,12 +121,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.includes(user.role);
   };
 
+  const isSuperAdmin = user?.role === 'CEO' || user?.role === 'Super Admin';
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         loading,
+        isSuperAdmin,
         login,
         logout,
         refreshUser,
