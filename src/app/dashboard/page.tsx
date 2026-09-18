@@ -16,6 +16,7 @@ import {
   Palette,
   Globe,
   Calendar,
+  CalendarDays,
   Sparkles,
   ChevronRight,
   Users,
@@ -121,6 +122,35 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Executive Approvals Banner */}
+      {(user?.role === 'CEO' || user?.role === 'Super Admin') && stats.pendingLeavesCount > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
+              <CalendarDays className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Pending Leave Applications Awaiting Review</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-black font-extrabold">
+                  {stats.pendingLeavesCount} Pending
+                </span>
+              </h3>
+              <p className="text-xs text-gray-300 mt-0.5">
+                Staff members have submitted leave requests requiring Executive approval.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/leaves"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 flex items-center gap-1.5 transition-all shadow-sm shrink-0"
+          >
+            <span>Review & Approve Leaves</span>
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

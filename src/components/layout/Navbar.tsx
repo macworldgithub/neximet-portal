@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiPost } from '../../lib/api';
+import { apiGet, apiPost, apiPut } from '../../lib/api';
 import {
   Clock,
   UserCheck,
@@ -14,6 +15,12 @@ import {
   KeyRound,
   ChevronRight,
   ShieldAlert,
+  CalendarDays,
+  Check,
+  X,
+  FolderKanban,
+  ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 import AdminResetPasswordModal from '../employees/AdminResetPasswordModal';
 
@@ -23,10 +30,16 @@ export default function Navbar() {
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [clockActionLoading, setClockActionLoading] = useState(false);
 
-  // Admin Notification State
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  // Consolidated Admin Notifications State
+  const [notificationsData, setNotificationsData] = useState<any>({
+    totalCount: 0,
+    counts: { leaves: 0, passwords: 0, attendance: 0, tasks: 0 },
+    notifications: { leaves: [], passwords: [], attendance: [], tasks: [] },
+  });
+  const [activeTab, setActiveTab] = useState<'all' | 'leaves' | 'passwords' | 'other'>('all');
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [selectedEmployeeForReset, setSelectedEmployeeForReset] = useState<any>(null);
+  const [leaveActionLoading, setLeaveActionLoading] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Live real-time clock
@@ -52,16 +65,16 @@ export default function Navbar() {
     }
   };
 
-  // Fetch pending password reset requests for Super Admin / CEO
-  const fetchPendingPasswordRequests = async () => {
+  // Fetch consolidated notifications for Super Admin / CEO
+  const fetchAdminNotifications = async () => {
     if (!isSuperAdmin) return;
     try {
-      const res = await apiGet('/auth/password-requests?status=Pending');
+      const res = await apiGet('/dashboard/admin-notifications');
       if (res.success) {
-        setPendingRequests(res.requests || []);
+        setNotificationsData(res);
       }
     } catch (err) {
-      console.error('Error fetching password requests:', err);
+      console.error('Error fetching admin notifications:', err);
     }
   };
 
@@ -69,8 +82,8 @@ export default function Navbar() {
     if (user) {
       fetchTodayStatus();
       if (isSuperAdmin) {
-        fetchPendingPasswordRequests();
-        const poll = setInterval(fetchPendingPasswordRequests, 15000); // Check every 15s
+        fetchAdminNotifications();
+        const poll = setInterval(fetchAdminNotifications, 15000); // Poll every 15s
         return () => clearInterval(poll);
       }
     }
@@ -91,13 +104,11 @@ export default function Navbar() {
     setClockActionLoading(true);
     try {
       if (!todayAttendance || !todayAttendance.checkIn) {
-        // Clock In
         const res = await apiPost('/attendance/check-in');
         if (res.success) {
           setTodayAttendance(res.attendance);
         }
       } else if (!todayAttendance.checkOut) {
-        // Clock Out
         const res = await apiPost('/attendance/check-out');
         if (res.success) {
           setTodayAttendance(res.attendance);
@@ -110,9 +121,23 @@ export default function Navbar() {
     }
   };
 
+  const handleReviewLeave = async (id: string, status: 'approved' | 'rejected') => {
+    setLeaveActionLoading(id);
+    try {
+      const res = await apiPut(`/leaves/requests/${id}/review`, { status });
+      if (res.success) {
+        await fetchAdminNotifications();
+      }
+    } catch (err) {
+      console.error('Error reviewing leave:', err);
+    } finally {
+      setLeaveActionLoading(null);
+    }
+  };
+
   const handleOpenResetFromNotif = (req: any) => {
     setSelectedEmployeeForReset({
-      id: req.user?._id || req.user,
+      id: req.user?._id || req.user || req.id,
       name: req.name,
       email: req.email,
       role: req.role,
@@ -121,6 +146,12 @@ export default function Navbar() {
     });
     setShowNotifDropdown(false);
   };
+
+  const totalUnread = notificationsData.totalCount || 0;
+  const leaveRequests = notificationsData.notifications?.leaves || [];
+  const passwordRequests = notificationsData.notifications?.passwords || [];
+  const attendanceAlerts = notificationsData.notifications?.attendance || [];
+  const taskAlerts = notificationsData.notifications?.tasks || [];
 
   return (
     <>
@@ -186,89 +217,282 @@ export default function Navbar() {
 
         {/* Right: Notifications, User details & Sign Out */}
         <div className="flex items-center gap-4">
-          {/* Super Admin Notification Bell for Password Resets */}
+          {/* Super Admin Unified Notification Center */}
           {isSuperAdmin && (
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => setShowNotifDropdown(!showNotifDropdown)}
                 className={`relative p-2.5 rounded-xl border transition-all ${
-                  pendingRequests.length > 0
+                  totalUnread > 0
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
                     : 'bg-[#111827] text-gray-400 border-[#1F293D] hover:text-white hover:border-[#5470F4]/40'
                 }`}
-                title="Super Admin Notifications"
+                title="Super Admin Notifications & Approvals"
               >
                 <Bell className="w-4 h-4" />
-                {pendingRequests.length > 0 && (
+                {totalUnread > 0 && (
                   <>
                     <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold flex items-center justify-center shadow-lg shadow-rose-500/40">
-                      {pendingRequests.length}
+                      {totalUnread}
                     </span>
                     <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-400 animate-ping opacity-75" />
                   </>
                 )}
               </button>
 
-              {/* Dropdown Menu */}
+              {/* Notification Dropdown Panel */}
               {showNotifDropdown && (
-                <div className="absolute right-0 mt-3 w-84 sm:w-96 bg-[#111827] border border-[#1F293D] rounded-2xl shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute right-0 mt-3 w-88 sm:w-[440px] bg-[#111827] border border-[#1F293D] rounded-3xl shadow-2xl shadow-black/90 p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {/* Header */}
                   <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
                     <div className="flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      <ShieldAlert className="w-4 h-4 text-[#5CC5FA]" />
                       <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                        Password Reset Requests
+                        Executive Notifications
                       </h4>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1F293D] text-gray-300 border border-[#2D3A54]">
-                      {pendingRequests.length} Pending
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1F293D] text-[#5CC5FA] border border-[#5470F4]/30">
+                      {totalUnread} Action Items
                     </span>
                   </div>
 
-                  {pendingRequests.length === 0 ? (
-                    <div className="py-6 text-center space-y-2">
-                      <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto opacity-80" />
-                      <p className="text-xs text-gray-300 font-medium">All Clear!</p>
+                  {/* Filter Tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#1F293D]/60 text-[11px]">
+                    <button
+                      onClick={() => setActiveTab('all')}
+                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                        activeTab === 'all'
+                          ? 'bg-[#5470F4] text-white shadow-sm'
+                          : 'bg-[#0B0F19] text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      All ({totalUnread})
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('leaves')}
+                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                        activeTab === 'leaves'
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-[#0B0F19] text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Leaves ({leaveRequests.length})
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('passwords')}
+                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                        activeTab === 'passwords'
+                          ? 'bg-blue-500 text-white shadow-sm'
+                          : 'bg-[#0B0F19] text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Passwords ({passwordRequests.length})
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('other')}
+                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                        activeTab === 'other'
+                          ? 'bg-purple-500 text-white shadow-sm'
+                          : 'bg-[#0B0F19] text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Alerts ({attendanceAlerts.length + taskAlerts.length})
+                    </button>
+                  </div>
+
+                  {/* Content List */}
+                  {totalUnread === 0 ? (
+                    <div className="py-8 text-center space-y-2">
+                      <CheckCircle2 className="w-9 h-9 text-emerald-400 mx-auto opacity-80" />
+                      <p className="text-xs text-gray-300 font-semibold">Everything Caught Up!</p>
                       <p className="text-[11px] text-gray-500">
-                        No pending password reset requests from employees.
+                        No pending leaves, password resets, or executive alerts.
                       </p>
                     </div>
                   ) : (
-                    <div className="max-h-72 overflow-y-auto space-y-2.5 pr-1">
-                      {pendingRequests.map((req) => (
-                        <div
-                          key={req._id}
-                          className="bg-[#0B0F19] border border-[#1F293D] hover:border-amber-500/40 rounded-xl p-3 space-y-2 transition-all"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-xs font-bold text-white">{req.name}</p>
-                              <p className="text-[11px] text-[#5CC5FA] font-mono">{req.email}</p>
-                              <span className="text-[10px] text-gray-400 block mt-0.5">
-                                {req.role} • {req.department}
+                    <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1">
+                      {/* 1. Pending Leave Approvals */}
+                      {(activeTab === 'all' || activeTab === 'leaves') &&
+                        leaveRequests.map((req: any) => (
+                          <div
+                            key={req._id}
+                            className="bg-[#0B0F19] border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5 hover:border-amber-500/60 transition-all shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
+                                  <p className="text-xs font-bold text-white">
+                                    {req.user?.name || 'Staff Member'}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] text-gray-400 block mt-0.5">
+                                  {req.user?.department} • Applied {new Date(req.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
+                                {req.leaveType} ({req.totalDays}d)
                               </span>
                             </div>
-                            <span className="text-[9px] text-amber-400 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                              {new Date(req.requestedAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
 
-                          <div className="pt-1 flex justify-end">
-                            <button
-                              onClick={() => handleOpenResetFromNotif(req)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 transition-all shadow-sm"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-                              <span>Reset Password</span>
-                              <ChevronRight className="w-3 h-3" />
-                            </button>
+                            <p className="text-[11px] text-gray-300 bg-[#111827] p-2 rounded-xl border border-[#1F293D] italic">
+                              "{req.reason}"
+                            </p>
+
+                            <div className="flex items-center justify-between text-[10px] text-gray-400 border-t border-[#1F293D] pt-2">
+                              <span>
+                                {new Date(req.startDate).toLocaleDateString()} →{' '}
+                                {new Date(req.endDate).toLocaleDateString()}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleReviewLeave(req._id, 'rejected')}
+                                  disabled={leaveActionLoading === req._id}
+                                  className="px-2.5 py-1 rounded-lg text-rose-300 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 font-semibold flex items-center gap-1 transition-all disabled:opacity-50"
+                                >
+                                  <X className="w-3 h-3" />
+                                  <span>Reject</span>
+                                </button>
+                                <button
+                                  onClick={() => handleReviewLeave(req._id, 'approved')}
+                                  disabled={leaveActionLoading === req._id}
+                                  className="px-3 py-1 rounded-lg text-emerald-300 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 font-bold flex items-center gap-1 transition-all shadow-sm disabled:opacity-50"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Approve</span>
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+
+                      {/* 2. Pending Password Reset Requests */}
+                      {(activeTab === 'all' || activeTab === 'passwords') &&
+                        passwordRequests.map((req: any) => (
+                          <div
+                            key={req._id}
+                            className="bg-[#0B0F19] border border-blue-500/30 rounded-2xl p-3.5 space-y-2 hover:border-blue-500/60 transition-all shadow-sm"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <KeyRound className="w-3.5 h-3.5 text-blue-400" />
+                                  <p className="text-xs font-bold text-white">{req.name}</p>
+                                </div>
+                                <p className="text-[11px] text-[#5CC5FA] font-mono mt-0.5">{req.email}</p>
+                                <span className="text-[10px] text-gray-400 block mt-0.5">
+                                  {req.role} • {req.department}
+                                </span>
+                              </div>
+                              <span className="text-[9px] text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                                Password Reset
+                              </span>
+                            </div>
+
+                            <div className="pt-1 flex justify-end">
+                              <button
+                                onClick={() => handleOpenResetFromNotif(req)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 border border-blue-500/40 flex items-center gap-1.5 transition-all shadow-sm"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" />
+                                <span>Reset Password</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                      {/* 3. Today's Attendance Alerts */}
+                      {(activeTab === 'all' || activeTab === 'other') &&
+                        attendanceAlerts.map((att: any) => (
+                          <div
+                            key={att._id}
+                            className="bg-[#0B0F19] border border-amber-500/20 rounded-2xl p-3 space-y-1.5 hover:border-amber-500/40 transition-all"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                  <span className="text-xs font-bold text-white">{att.name}</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400">{att.department}</p>
+                              </div>
+                              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                {att.minutesLate}m Late Today
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-[#1F293D]">
+                              <span>Deduction: PKR {Number(att.deductionAmount || 0).toLocaleString()}</span>
+                              <Link
+                                href="/attendance"
+                                onClick={() => setShowNotifDropdown(false)}
+                                className="text-[#5CC5FA] hover:underline flex items-center gap-0.5"
+                              >
+                                <span>View Roster</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+
+                      {/* 4. Urgent Tasks & Reviews */}
+                      {(activeTab === 'all' || activeTab === 'other') &&
+                        taskAlerts.map((task: any) => (
+                          <div
+                            key={task._id}
+                            className="bg-[#0B0F19] border border-purple-500/20 rounded-2xl p-3 space-y-1.5 hover:border-purple-500/40 transition-all"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <FolderKanban className="w-3.5 h-3.5 text-purple-400" />
+                                  <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                                    {task.title}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-gray-400">
+                                  {task.project?.title || 'Project'} • Assignee: {task.assignedTo?.name || 'Unassigned'}
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-bold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 uppercase">
+                                {task.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-[#1F293D]">
+                              <span className="text-rose-400 font-semibold">Priority: {task.priority}</span>
+                              <Link
+                                href={`/projects/${task.project?._id || ''}`}
+                                onClick={() => setShowNotifDropdown(false)}
+                                className="text-[#5CC5FA] hover:underline flex items-center gap-0.5"
+                              >
+                                <span>Open Kanban</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   )}
+
+                  {/* Dropdown Footer */}
+                  <div className="pt-2 border-t border-[#1F293D] flex items-center justify-between text-[11px]">
+                    <Link
+                      href="/leaves"
+                      onClick={() => setShowNotifDropdown(false)}
+                      className="text-[#5CC5FA] hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <CalendarDays className="w-3 h-3" />
+                      <span>Leaves Center</span>
+                    </Link>
+                    <Link
+                      href="/employees"
+                      onClick={() => setShowNotifDropdown(false)}
+                      className="text-gray-400 hover:text-white flex items-center gap-1 font-semibold"
+                    >
+                      <span>Team Directory</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
@@ -280,6 +504,8 @@ export default function Navbar() {
                 className={`text-[11px] px-3 py-1 rounded-full font-bold inline-flex items-center gap-1.5 border ${
                   user.role === 'CEO'
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : user.role === 'Super Admin'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                     : user.role === 'Project Manager'
                     ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
                     : user.role === 'Team Manager'
@@ -325,7 +551,7 @@ export default function Navbar() {
           onClose={() => setSelectedEmployeeForReset(null)}
           employee={selectedEmployeeForReset}
           onSuccess={() => {
-            fetchPendingPasswordRequests();
+            fetchAdminNotifications();
           }}
         />
       )}

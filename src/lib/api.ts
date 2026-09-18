@@ -39,7 +39,22 @@ export async function apiFetch<T = any>(
       headers,
     });
 
-    const json = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    let json: any = {};
+
+    if (contentType.includes('application/json')) {
+      json = await res.json();
+    } else {
+      const text = await res.text();
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = {
+          success: false,
+          message: res.status === 404 ? 'Requested endpoint was not found on server' : `Server returned status ${res.status}`,
+        };
+      }
+    }
 
     if (!res.ok) {
       return {
