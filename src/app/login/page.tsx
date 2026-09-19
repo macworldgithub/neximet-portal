@@ -197,37 +197,51 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Discreet Test Directory Reference (Collapsible, Read-Only Reference) */}
+        {/* Real Organizational Credentials Directory (Collapsible, Read-Only Reference) */}
         <details className="group bg-[#111827]/60 border border-[#1F293D] rounded-2xl p-3.5 text-xs transition-all">
           <summary className="cursor-pointer list-none flex items-center justify-between text-gray-400 hover:text-gray-300 select-none">
             <div className="flex items-center gap-2">
               <KeyRound className="w-3.5 h-3.5 text-[#5CC5FA]" />
-              <span className="font-semibold text-[11px]">System Credentials Directory (For Testing)</span>
+              <span className="font-semibold text-[11px]">Real Organizational Accounts (Staff Directory)</span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-gray-500 transition-transform group-open:rotate-180" />
           </summary>
 
           <div className="mt-3 pt-3 border-t border-[#1F293D] space-y-2.5 text-[11px]">
             <p className="text-gray-400 text-[10px] leading-relaxed">
-              Login credentials determine user role and permissions automatically upon sign-in. Default password for all seeded accounts is <code className="text-[#5CC5FA] bg-[#0B0F19] px-1.5 py-0.5 rounded border border-[#1F293D]">password123</code>.
+              Staff passwords follow the secure standard <code className="text-[#5CC5FA] bg-[#0B0F19] px-1.5 py-0.5 rounded border border-[#1F293D]">&lt;username&gt;@123</code> (e.g. <span className="text-white font-mono">talha@123</span>, <span className="text-white font-mono">jawwad@123</span>). Salaries left blank for CEO setup.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[10px]">
               <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
-                <span className="text-amber-400 font-bold block">CEO (Full Superadmin)</span>
-                <span className="text-gray-300">ceo@neximet.com</span>
+                <span className="text-amber-400 font-bold block">CEO & Founder</span>
+                <span className="text-gray-300">talha@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: talha@123</span>
               </div>
               <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
-                <span className="text-blue-400 font-bold block">Project Manager</span>
-                <span className="text-gray-300">pm@neximet.com</span>
+                <span className="text-amber-400 font-bold block">CEO & Co-Founder</span>
+                <span className="text-gray-300">bilal@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: bilal@123</span>
               </div>
               <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
-                <span className="text-purple-400 font-bold block">Team Manager (WordPress)</span>
-                <span className="text-gray-300">tariq.wp@neximet.com</span>
+                <span className="text-blue-400 font-bold block">Software Dev (PM)</span>
+                <span className="text-gray-300">jawwad@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: jawwad@123</span>
               </div>
               <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
-                <span className="text-emerald-400 font-bold block">Team Member (Software Dev)</span>
-                <span className="text-gray-300">bilal.dev@neximet.com</span>
+                <span className="text-purple-400 font-bold block">Software Dev (Team Mgr)</span>
+                <span className="text-gray-300">yaseen@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: yaseen@123</span>
+              </div>
+              <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
+                <span className="text-blue-400 font-bold block">WordPress Team (PM)</span>
+                <span className="text-gray-300">abrar@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: abrar@123</span>
+              </div>
+              <div className="p-2 rounded-xl bg-[#0B0F19] border border-[#1F293D]">
+                <span className="text-blue-400 font-bold block">SEO Team (PM)</span>
+                <span className="text-gray-300">ammar@neximet.com</span>
+                <span className="text-gray-500 block text-[9px]">Pass: ammar@123</span>
               </div>
             </div>
           </div>

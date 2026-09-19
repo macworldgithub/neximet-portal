@@ -20,9 +20,12 @@ import {
   ShieldAlert,
   Clock,
   CheckCircle2,
+  Pencil,
+  Network,
 } from 'lucide-react';
 import CreateEmployeeModal from '../../components/employees/CreateEmployeeModal';
 import AdminResetPasswordModal from '../../components/employees/AdminResetPasswordModal';
+import EditEmployeeModal from '../../components/employees/EditEmployeeModal';
 
 export default function EmployeesPage() {
   const { user, isSuperAdmin } = useAuth();
@@ -34,6 +37,7 @@ export default function EmployeesPage() {
   // Super Admin Modals & Requests
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedEmployeeForReset, setSelectedEmployeeForReset] = useState<any>(null);
+  const [selectedEmployeeForEdit, setSelectedEmployeeForEdit] = useState<any>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
 
   const fetchEmployees = async () => {
@@ -107,6 +111,12 @@ export default function EmployeesPage() {
 
   const handleEmployeeCreated = (newEmp: any) => {
     setEmployees((prev) => [newEmp, ...prev]);
+  };
+
+  const handleEmployeeUpdated = (updatedUser: any) => {
+    setEmployees((prev) =>
+      prev.map((emp) => (emp._id === updatedUser._id ? updatedUser : emp))
+    );
   };
 
   return (
@@ -281,21 +291,55 @@ export default function EmployeesPage() {
                     <Phone className="w-3.5 h-3.5 text-gray-500" />
                     <span className="font-mono text-[11px]">{emp.phone || '+92 (300) 123-4567'}</span>
                   </div>
+
+                  {emp.reportsTo && (
+                    <div className="flex items-center gap-2 text-purple-400 text-xs pt-1">
+                      <Network className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span className="truncate">
+                        Reports to: <strong className="text-purple-300">{emp.reportsTo.name}</strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="border-t border-[#1F293D] pt-3 space-y-3">
                 <div className="flex items-center justify-between text-[11px] text-gray-400">
-                  <span>
-                    Daily Wage: <strong className="text-white font-mono">PKR {(emp.dailyWage || 4000).toLocaleString()}</strong>
-                  </span>
-                  <span className="text-emerald-400 font-semibold">Active Staff</span>
+                  <div>
+                    <span className="block text-[10px] text-gray-500">Base Salary</span>
+                    {emp.baseSalary ? (
+                      <span className="text-emerald-400 font-bold font-mono">
+                        PKR {Number(emp.baseSalary).toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="text-amber-400/90 font-medium text-[10px] bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 inline-block">
+                        Pending CEO Review
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[10px] text-gray-500">Daily Wage</span>
+                    {emp.dailyWage ? (
+                      <span className="text-white font-mono font-semibold">
+                        PKR {Number(emp.dailyWage).toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 text-[10px]">Unassigned</span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Super Admin Quick Override Action */}
+                {/* Super Admin / CEO Quick Actions */}
                 {isSuperAdmin && (
-                  <div className="pt-2 border-t border-[#1F293D]/60 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-500">Admin Control</span>
+                  <div className="pt-2 border-t border-[#1F293D]/60 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setSelectedEmployeeForEdit(emp)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white bg-[#161F30] hover:bg-[#1E293D] border border-[#2D3A54] hover:border-amber-500/40 flex items-center gap-1.5 transition-all"
+                    >
+                      <Pencil className="w-3 h-3 text-amber-400" />
+                      <span>Edit & Salary</span>
+                    </button>
+
                     <button
                       onClick={() =>
                         setSelectedEmployeeForReset({
@@ -306,10 +350,10 @@ export default function EmployeesPage() {
                           department: emp.department,
                         })
                       }
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white bg-[#161F30] hover:bg-[#1E293D] border border-[#2D3A54] hover:border-amber-500/40 flex items-center gap-1.5 transition-all"
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white bg-[#161F30] hover:bg-[#1E293D] border border-[#2D3A54] hover:border-[#5470F4]/40 flex items-center gap-1.5 transition-all"
                     >
-                      <KeyRound className="w-3 h-3 text-amber-400" />
-                      <span>Reset Password</span>
+                      <KeyRound className="w-3 h-3 text-[#5CC5FA]" />
+                      <span>Reset</span>
                     </button>
                   </div>
                 )}
@@ -325,6 +369,17 @@ export default function EmployeesPage() {
         onClose={() => setCreateModalOpen(false)}
         onCreated={handleEmployeeCreated}
       />
+
+      {/* Edit Employee & Salary Modal */}
+      {selectedEmployeeForEdit && (
+        <EditEmployeeModal
+          isOpen={!!selectedEmployeeForEdit}
+          onClose={() => setSelectedEmployeeForEdit(null)}
+          employee={selectedEmployeeForEdit}
+          allEmployees={employees}
+          onUpdated={handleEmployeeUpdated}
+        />
+      )}
 
       {/* Admin Reset Password Modal */}
       {selectedEmployeeForReset && (
