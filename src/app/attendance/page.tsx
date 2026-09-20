@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiGet, apiPost } from '../../lib/api';
 import {
@@ -20,6 +20,12 @@ import {
   Navigation,
   MapPinOff,
   LocateFixed,
+  Camera,
+  RotateCcw,
+  Smartphone,
+  Eye,
+  X,
+  Laptop,
 } from 'lucide-react';
 
 export default function AttendancePage() {
@@ -32,6 +38,14 @@ export default function AttendancePage() {
     radiusMeters: number;
     enforceLocation: boolean;
   } | null>(null);
+  const [antiProxySettings, setAntiProxySettings] = useState<{
+    enforceSingleDevicePerDay: boolean;
+    requireSelfieVerification: boolean;
+  }>({
+    enforceSingleDevicePerDay: true,
+    requireSelfieVerification: true,
+  });
+
   const [history, setHistory] = useState<any[]>([]);
   const [roster, setRoster] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'self' | 'roster'>('self');
@@ -39,11 +53,36 @@ export default function AttendancePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [simulatedHour, setSimulatedHour] = useState('now');
   const [simulatedLocation, setSimulatedLocation] = useState<'actual' | 'office' | 'home'>('actual');
+  const [simulatedDevice, setSimulatedDevice] = useState<'actual' | 'secondary'>('actual');
   const [deviceCoords, setDeviceCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [distanceToOffice, setDistanceToOffice] = useState<number | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+  // Anti-Proxy: Device ID Fingerprint
+  const [deviceId, setDeviceId] = useState<string>('');
+
+  // Anti-Proxy: Selfie Camera Modal State
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraStarting, setCameraStarting] = useState(false);
+
+  // Photo Inspect Modal for CEO
+  const [inspectModal, setInspectModal] = useState<{
+    isOpen: boolean;
+    photo: string;
+    userName: string;
+    department: string;
+    checkInTime: string;
+    distance: string;
+    deviceInfo: any;
+  } | null>(null);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Digital clock
   const [currentTime, setCurrentTime] = useState('');
@@ -54,6 +93,18 @@ export default function AttendancePage() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Initialize or retrieve persistent Device ID
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      let storedId = localStorage.getItem('neximet_device_id');
+      if (!storedId) {
+        storedId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+        localStorage.setItem('neximet_device_id', storedId);
+      }
+      setDeviceId(storedId);
+    }
   }, []);
 
   // Haversine distance calculator
@@ -127,6 +178,9 @@ export default function AttendancePage() {
         if (todayRes.officeLocation) {
           setOfficeLocation(todayRes.officeLocation);
         }
+        if (todayRes.antiProxySettings) {
+          setAntiProxySettings(todayRes.antiProxySettings);
+        }
       }
 
       const histRes = await apiGet('/attendance/history');
@@ -152,8 +206,136 @@ export default function AttendancePage() {
     acquireLocation();
   }, [user]);
 
-  // Handle Check-In with Location Verification
-  const handleCheckIn = async () => {
+  // Webcam Management
+  const startCamera = async () => {
+    setCameraError(null);
+    setCameraStarting(true);
+    setCapturedPhoto(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Webcam device not accessible in this browser.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 400 },
+          height: { ideal: 300 },
+        },
+        audio: false,
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err: any) {
+      console.warn('Camera stream error:', err);
+      setCameraError(err.message || 'Could not access webcam camera. You can use simulation snapshot if camera hardware is unavailable.');
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  // Open camera modal and initialize stream
+  const openSelfieModal = () => {
+    setCameraModalOpen(true);
+    setCapturedPhoto(null);
+    startCamera();
+  };
+
+  const closeSelfieModal = () => {
+    stopCamera();
+    setCameraModalOpen(false);
+    setCapturedPhoto(null);
+    setCameraError(null);
+  };
+
+  // Capture video frame to canvas as base64 JPEG
+  const handleTakeSnapshot = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const width = video.videoWidth || 320;
+      const height = video.videoHeight || 240;
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Mirror if user facing
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setCapturedPhoto(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  // Generate a mock selfie snapshot for demo / sandbox environments
+  const handleSimulateSelfie = () => {
+    if (canvasRef.current) {
+      const canvas = canvasRef.current;
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Draw modern gradient background
+        const grad = ctx.createLinearGradient(0, 0, 320, 240);
+        grad.addColorStop(0, '#1E293B');
+        grad.addColorStop(1, '#0F172A');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 320, 240);
+
+        // Draw avatar circle
+        ctx.beginPath();
+        ctx.arc(160, 100, 50, 0, Math.PI * 2);
+        ctx.fillStyle = '#5470F4';
+        ctx.fill();
+
+        // Draw initials
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const initials = user?.name ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'ME';
+        ctx.fillText(initials, 160, 100);
+
+        // Draw timestamp & verified tag
+        ctx.fillStyle = '#10B981';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText('✓ LIVE SELFIE VERIFIED', 160, 175);
+
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '10px monospace';
+        ctx.fillText(new Date().toLocaleTimeString() + ' - Office Cam', 160, 195);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setCapturedPhoto(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  // Trigger check-in initiation
+  const initiateCheckIn = () => {
+    if (antiProxySettings.requireSelfieVerification) {
+      openSelfieModal();
+    } else {
+      executeCheckIn(null);
+    }
+  };
+
+  // Submit Check-In Payload
+  const executeCheckIn = async (photoPayload: string | null) => {
     setActionLoading(true);
     setMsg(null);
     let customTime: string | undefined = undefined;
@@ -188,18 +370,28 @@ export default function AttendancePage() {
       lng = deviceCoords.longitude;
     }
 
+    // Determine device ID
+    const activeDeviceId = simulatedDevice === 'secondary'
+      ? 'dev_secondary_device_99'
+      : deviceId;
+
     try {
       const res = await apiPost('/attendance/check-in', {
         customTime,
         latitude: lat,
         longitude: lng,
+        deviceId: activeDeviceId,
+        deviceType: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop / Laptop',
+        browser: navigator.userAgent.includes('Chrome') ? 'Google Chrome' : navigator.userAgent.includes('Firefox') ? 'Mozilla Firefox' : 'Web Browser',
+        photo: photoPayload || undefined,
       });
 
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || 'Check-in recorded with office location verified!' });
+        setMsg({ type: 'success', text: res.message || 'Check-in recorded with Anti-Proxy and Office Geofence Verified!' });
+        closeSelfieModal();
         fetchAttendanceData();
       } else {
-        setMsg({ type: 'error', text: res.message || 'Check-in rejected: Location verification failed' });
+        setMsg({ type: 'error', text: res.message || 'Check-in rejected' });
       }
     } catch (err: any) {
       setMsg({ type: 'error', text: err?.message || 'Check-in error occurred' });
@@ -229,6 +421,9 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-8">
+      {/* Hidden canvas for snapshot rendering */}
+      <canvas ref={canvasRef} className="hidden" />
+
       {/* Title & Shift Overview */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -237,26 +432,39 @@ export default function AttendancePage() {
             <span>Attendance & Clock-In Management</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Automated late arrival tracking, salary deduction calculation, and remaining holiday quotas.
+            Automated late arrival tracking, office GPS geofencing, anti-proxy buddy punching protection, and holiday quotas.
           </p>
         </div>
 
-        <div className="bg-[#111827] border border-[#1F293D] px-4 py-2 rounded-2xl flex items-center gap-3">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-          <div className="text-xs">
-            <span className="text-gray-400 block text-[10px]">Active Shift Rule</span>
-            <span className="text-white font-bold">09:00 AM - 06:00 PM (15m Grace)</span>
+        <div className="flex items-center gap-2.5">
+          <div className="bg-[#111827] border border-[#1F293D] px-3.5 py-2 rounded-2xl flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
+            <div className="text-xs">
+              <span className="text-gray-400 block text-[10px]">Anti-Proxy Shield</span>
+              <span className="text-white font-bold">1-Device Lock + Live Selfie</span>
+            </div>
+          </div>
+
+          <div className="bg-[#111827] border border-[#1F293D] px-3.5 py-2 rounded-2xl flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="text-xs">
+              <span className="text-gray-400 block text-[10px]">Active Shift</span>
+              <span className="text-white font-bold">09:00 AM - 06:00 PM (15m Grace)</span>
+            </div>
           </div>
         </div>
       </div>
 
       {msg && (
-        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${msg.type === 'success'
+        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${
+          msg.type === 'success'
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-            : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-          }`}>
-          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-          <span>{msg.text}</span>
+            : msg.type === 'warning'
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+        }`}>
+          {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+          <span className="leading-relaxed">{msg.text}</span>
         </div>
       )}
 
@@ -277,26 +485,51 @@ export default function AttendancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
             {/* Today's Status Details */}
             <div className="space-y-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
-                <div className="flex items-center gap-2 mt-1">
-                  {todayAttendance?.checkIn ? (
-                    <span className={`text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${todayAttendance.status === 'present'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : todayAttendance.status === 'half_day'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    {todayAttendance?.checkIn ? (
+                      <span className={`text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${
+                        todayAttendance.status === 'present'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : todayAttendance.status === 'half_day'
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}>
-                      {todayAttendance.isLate ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                      <span className="capitalize">{todayAttendance.status.replace('_', ' ')}</span>
-                      {todayAttendance.isLate && ` (${todayAttendance.minutesLate}m late)`}
-                    </span>
-                  ) : (
-                    <span className="text-xs font-bold px-3 py-1 rounded-xl bg-gray-500/20 text-gray-400 border border-gray-500/30">
-                      Not Checked In Yet
-                    </span>
-                  )}
+                        {todayAttendance.isLate ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                        <span className="capitalize">{todayAttendance.status.replace('_', ' ')}</span>
+                        {todayAttendance.isLate && ` (${todayAttendance.minutesLate}m late)`}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold px-3 py-1 rounded-xl bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                        Not Checked In Yet
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Selfie Thumbnail if checked in with photo */}
+                {todayAttendance?.photo && (
+                  <div className="relative group cursor-pointer" onClick={() => setInspectModal({
+                    isOpen: true,
+                    photo: todayAttendance.photo,
+                    userName: user?.name || 'You',
+                    department: user?.department || '',
+                    checkInTime: new Date(todayAttendance.checkIn).toLocaleTimeString(),
+                    distance: todayAttendance.location?.distanceMeters !== null ? `${todayAttendance.location?.distanceMeters}m` : 'Verified',
+                    deviceInfo: todayAttendance.deviceInfo,
+                  })}>
+                    <img
+                      src={todayAttendance.photo}
+                      alt="Today's Check-in Selfie"
+                      className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-400/50 shadow-md group-hover:scale-105 transition-transform"
+                    />
+                    <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow">
+                      <Camera className="w-2.5 h-2.5" />
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">
@@ -335,15 +568,15 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              {/* Verified Location Stamp */}
+              {/* Verified Location & Anti-Proxy Stamp */}
               {todayAttendance?.location?.isVerified && (
                 <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-1">
                   <div className="flex items-center justify-between text-emerald-400 font-bold text-[11px]">
                     <span className="flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Office Geofence Verified</span>
+                      <span>Office GPS & Device Verified</span>
                     </span>
-                    <span>{todayAttendance.location.distanceMeters !== null ? `${todayAttendance.location.distanceMeters}m from Office` : 'In Range'}</span>
+                    <span>{todayAttendance.location.distanceMeters !== null ? `${todayAttendance.location.distanceMeters}m` : 'In Range'}</span>
                   </div>
                   <p className="text-[10px] text-gray-400 truncate">
                     {todayAttendance.location.officeAddress || 'Neximet Head Office'}
@@ -355,7 +588,7 @@ export default function AttendancePage() {
             {/* Actions & Simulation Trigger */}
             <div className="space-y-4 bg-[#161F30]/70 p-5 rounded-2xl border border-[#1F293D]">
               {/* Office Geofencing Live Radar */}
-              <div className="p-3.5 rounded-xl bg-[#0B0F19] border border-[#1F293D] space-y-2">
+              <div className="p-3 rounded-xl bg-[#0B0F19] border border-[#1F293D] space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-300 font-bold flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-[#5470F4]" />
@@ -370,13 +603,6 @@ export default function AttendancePage() {
                     <LocateFixed className={`w-3 h-3 ${locLoading ? 'animate-spin' : ''}`} />
                     <span>{locLoading ? 'Locating...' : 'Refresh GPS'}</span>
                   </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-gray-400 truncate max-w-[160px]">
-                    {officeLocation?.officeAddress || 'Neximet Head Office'}
-                  </span>
-                  <span className="text-gray-400 font-mono">Max {officeLocation?.radiusMeters || 200}m</span>
                 </div>
 
                 {/* Live Distance & Boundary Status */}
@@ -398,7 +624,7 @@ export default function AttendancePage() {
                           : 'Outside Office Geofence'}
                       </span>
                     </span>
-                    <span className="font-mono font-bold">{distanceToOffice}m away</span>
+                    <span className="font-mono font-bold">{distanceToOffice}m</span>
                   </div>
                 ) : locError ? (
                   <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300">
@@ -431,32 +657,47 @@ export default function AttendancePage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-white flex items-center justify-between mb-1">
-                    <span>Location Test Mode:</span>
-                    <span className="text-[10px] text-[#5CC5FA] font-mono">Test Geofence Security</span>
-                  </label>
-                  <select
-                    value={simulatedLocation}
-                    onChange={(e) => setSimulatedLocation(e.target.value as any)}
-                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-1.5 text-xs text-white outline-none"
-                  >
-                    <option value="actual">Live Device GPS (Browser Location)</option>
-                    <option value="office">Simulate At Office (Inside 15m Geofence)</option>
-                    <option value="home">Simulate At Home (Remote 5.8km Away - Should Reject)</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                      GPS Geofence:
+                    </label>
+                    <select
+                      value={simulatedLocation}
+                      onChange={(e) => setSimulatedLocation(e.target.value as any)}
+                      className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-2.5 py-1.5 text-[11px] text-white outline-none"
+                    >
+                      <option value="actual">Live GPS</option>
+                      <option value="office">At Office (15m)</option>
+                      <option value="home">At Home (5.8km)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                      Device Test:
+                    </label>
+                    <select
+                      value={simulatedDevice}
+                      onChange={(e) => setSimulatedDevice(e.target.value as any)}
+                      className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-2.5 py-1.5 text-[11px] text-white outline-none"
+                    >
+                      <option value="actual">My Device ({deviceId.substring(0, 8)})</option>
+                      <option value="secondary">Shared Device (Conflict)</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2 pt-2">
                 {!todayAttendance?.checkIn ? (
                   <button
-                    onClick={handleCheckIn}
+                    onClick={initiateCheckIn}
                     disabled={actionLoading}
                     className="w-full py-3 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all"
                   >
-                    <UserCheck className="w-4 h-4" />
-                    <span>{actionLoading ? 'Verifying Location & Checking In...' : 'Mark Check-In Now'}</span>
+                    <Camera className="w-4 h-4" />
+                    <span>{actionLoading ? 'Verifying & Clocking In...' : 'Verify Selfie & Clock-In'}</span>
                   </button>
                 ) : !todayAttendance?.checkOut ? (
                   <button
@@ -530,10 +771,11 @@ export default function AttendancePage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActiveTab('self')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'self'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'self'
                   ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                   : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
-                }`}
+              }`}
             >
               My Attendance History
             </button>
@@ -541,10 +783,11 @@ export default function AttendancePage() {
             {hasRole('CEO', 'Super Admin') && (
               <button
                 onClick={() => setActiveTab('roster')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'roster'
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === 'roster'
                     ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                     : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
-                  }`}
+                }`}
               >
                 Today's Company Roster ({roster.length} Staff)
               </button>
@@ -559,6 +802,7 @@ export default function AttendancePage() {
               <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
                 <tr>
                   <th className="py-3 px-4">Date</th>
+                  <th className="py-3 px-4">Selfie Snapshot</th>
                   <th className="py-3 px-4">Check-In</th>
                   <th className="py-3 px-4">Check-Out</th>
                   <th className="py-3 px-4">Status</th>
@@ -572,6 +816,26 @@ export default function AttendancePage() {
                   history.map((record: any) => (
                     <tr key={record._id} className="hover:bg-[#161F30]/60 transition-colors">
                       <td className="py-3.5 px-4 font-mono text-gray-300 font-semibold">{record.date}</td>
+                      <td className="py-3.5 px-4">
+                        {record.photo ? (
+                          <img
+                            src={record.photo}
+                            alt="Selfie"
+                            onClick={() => setInspectModal({
+                              isOpen: true,
+                              photo: record.photo,
+                              userName: user?.name || 'You',
+                              department: user?.department || '',
+                              checkInTime: record.checkIn ? new Date(record.checkIn).toLocaleTimeString() : '',
+                              distance: record.location?.distanceMeters !== null ? `${record.location?.distanceMeters}m` : 'Verified',
+                              deviceInfo: record.deviceInfo,
+                            })}
+                            className="w-9 h-9 rounded-xl object-cover border border-emerald-400/40 cursor-pointer hover:scale-110 transition-transform shadow"
+                          />
+                        ) : (
+                          <span className="text-gray-500 font-mono text-[10px]">--</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 text-white">
                         {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
                       </td>
@@ -579,12 +843,13 @@ export default function AttendancePage() {
                         {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${record.status === 'present'
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${
+                          record.status === 'present'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : record.status === 'half_day'
                               ? 'bg-rose-500/20 text-rose-300'
                               : 'bg-amber-500/20 text-amber-300'
-                          }`}>
+                        }`}>
                           {record.status.replace('_', ' ')}
                         </span>
                       </td>
@@ -609,7 +874,7 @@ export default function AttendancePage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-gray-500">
+                    <td colSpan={8} className="py-8 text-center text-gray-500">
                       No attendance history recorded yet.
                     </td>
                   </tr>
@@ -618,16 +883,18 @@ export default function AttendancePage() {
             </table>
           </div>
         ) : (
-          /* Tab 2: Company Roster View */
+          /* Tab 2: Company Roster View with Anti-Proxy Inspection for CEO */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
                 <tr>
                   <th className="py-3 px-4">Employee</th>
+                  <th className="py-3 px-4">Live Selfie</th>
                   <th className="py-3 px-4">Department</th>
                   <th className="py-3 px-4">Check-In</th>
-                  <th className="py-3 px-4">Today Status</th>
-                  <th className="py-3 px-4">Late Minutes</th>
+                  <th className="py-3 px-4">Anti-Proxy & Location</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Late Mins</th>
                   <th className="py-3 px-4">Deduction</th>
                 </tr>
               </thead>
@@ -645,19 +912,64 @@ export default function AttendancePage() {
                         </div>
                       </div>
                     </td>
+                    <td className="py-3.5 px-4">
+                      {item.photo ? (
+                        <div
+                          className="relative group inline-block cursor-pointer"
+                          onClick={() => setInspectModal({
+                            isOpen: true,
+                            photo: item.photo,
+                            userName: item.user?.name,
+                            department: item.user?.department,
+                            checkInTime: item.checkIn ? new Date(item.checkIn).toLocaleTimeString() : '',
+                            distance: item.location?.distanceMeters !== null ? `${item.location?.distanceMeters}m` : 'Verified',
+                            deviceInfo: item.deviceInfo,
+                          })}
+                        >
+                          <img
+                            src={item.photo}
+                            alt="Check-in snapshot"
+                            className="w-9 h-9 rounded-xl object-cover border border-purple-400/40 group-hover:border-purple-400 transition-all shadow group-hover:scale-110"
+                          />
+                          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Eye className="w-3 h-3 text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-500 font-mono text-[10px]">No Photo</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4 text-gray-300">{item.user.department}</td>
                     <td className="py-3.5 px-4 font-mono text-white">
                       {item.checkIn ? new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${item.status === 'present'
+                      {item.checkedIn ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>1-Device Locked</span>
+                          </span>
+                          {item.location?.distanceMeters !== null && (
+                            <span className="text-[10px] text-gray-400 block font-mono">
+                              {item.location.distanceMeters}m from office
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500 text-[10px]">--</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${
+                        item.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : item.status === 'half_day'
                             ? 'bg-rose-500/20 text-rose-300'
                             : item.status === 'late'
                               ? 'bg-amber-500/20 text-amber-300'
                               : 'bg-gray-500/20 text-gray-400'
-                        }`}>
+                      }`}>
                         {item.status.replace('_', ' ')}
                       </span>
                     </td>
@@ -678,6 +990,196 @@ export default function AttendancePage() {
           </div>
         )}
       </div>
+
+      {/* MODAL 1: Live Webcam Selfie Capture Viewfinder */}
+      {cameraModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-white">Live Identity Verification</h3>
+              </div>
+              <button
+                onClick={closeSelfieModal}
+                className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed">
+              To prevent buddy-punching & proxy check-ins, please take a live webcam snapshot to verify your physical presence.
+            </p>
+
+            {/* Video Viewfinder / Captured Photo Preview */}
+            <div className="relative aspect-[4/3] bg-[#0B0F19] rounded-2xl overflow-hidden border-2 border-[#1F293D] flex items-center justify-center">
+              {!capturedPhoto ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover transform -scale-x-100"
+                  />
+                  {cameraStarting && (
+                    <div className="absolute inset-0 bg-[#0B0F19]/80 flex flex-col items-center justify-center text-xs text-gray-300 gap-2">
+                      <Camera className="w-6 h-6 animate-pulse text-[#5470F4]" />
+                      <span>Opening camera stream...</span>
+                    </div>
+                  )}
+                  {cameraError && (
+                    <div className="absolute inset-0 bg-[#0B0F19]/95 p-4 flex flex-col items-center justify-center text-center space-y-3">
+                      <AlertTriangle className="w-8 h-8 text-amber-400" />
+                      <p className="text-xs text-amber-300">{cameraError}</p>
+                      <button
+                        onClick={handleSimulateSelfie}
+                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow"
+                      >
+                        Generate Verified Snapshot (Demo)
+                      </button>
+                    </div>
+                  )}
+                  {/* Viewfinder Target Graphic */}
+                  <div className="absolute inset-0 pointer-events-none border-2 border-dashed border-white/20 rounded-2xl m-4 flex items-center justify-center">
+                    <span className="text-[10px] font-mono text-white/40 bg-black/40 px-2 py-0.5 rounded-full">
+                      Align Face in Frame
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="relative w-full h-full">
+                  <img
+                    src={capturedPhoto}
+                    alt="Captured selfie"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute top-3 left-3 bg-emerald-500/90 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Snapshot Ready</span>
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Device Info Badge */}
+            <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D] flex items-center justify-between text-xs text-gray-300">
+              <span className="flex items-center gap-1.5">
+                <Laptop className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                <span>Device Fingerprint:</span>
+              </span>
+              <span className="font-mono text-white font-bold">{deviceId ? deviceId.substring(0, 14) + '...' : 'Generating...'}</span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-2">
+              {!capturedPhoto ? (
+                <>
+                  <button
+                    onClick={handleTakeSnapshot}
+                    disabled={cameraStarting || !!cameraError}
+                    className="flex-1 py-3 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>Take Snapshot</span>
+                  </button>
+                  <button
+                    onClick={handleSimulateSelfie}
+                    className="px-3 py-3 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-[#5CC5FA] border border-[#1F293D] transition-all"
+                    title="Simulate Photo for Testing"
+                  >
+                    Simulate
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={startCamera}
+                    className="px-4 py-3 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-gray-300 border border-[#1F293D] flex items-center gap-1.5 transition-all"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retake</span>
+                  </button>
+                  <button
+                    onClick={() => executeCheckIn(capturedPhoto)}
+                    disabled={actionLoading}
+                    className="flex-1 py-3 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{actionLoading ? 'Recording Clock-In...' : 'Confirm & Clock In'}</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Photo & Anti-Proxy Audit Inspector for CEO */}
+      {inspectModal?.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#5470F4]" />
+                <h3 className="text-base font-bold text-white">Attendance Verification Audit</h3>
+              </div>
+              <button
+                onClick={() => setInspectModal(null)}
+                className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl overflow-hidden border border-[#1F293D] max-h-72 flex items-center justify-center bg-black">
+                <img
+                  src={inspectModal.photo}
+                  alt="Verified Snapshot"
+                  className="w-full h-full object-contain max-h-72"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
+                  <span className="text-gray-400 text-[10px] block">Employee</span>
+                  <span className="font-bold text-white text-sm">{inspectModal.userName}</span>
+                  <span className="text-[10px] text-gray-400 block">{inspectModal.department}</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
+                  <span className="text-gray-400 text-[10px] block">Clock-In Time</span>
+                  <span className="font-bold text-white text-sm">{inspectModal.checkInTime}</span>
+                  <span className="text-[10px] text-emerald-400 block">{inspectModal.distance} from office</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D] space-y-1.5 text-xs">
+                <span className="text-gray-400 text-[10px] uppercase font-bold block">Physical Device Signature</span>
+                <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
+                  <span>Device ID:</span>
+                  <span className="text-white font-bold">{inspectModal.deviceInfo?.deviceId || 'Verified Device'}</span>
+                </div>
+                <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
+                  <span>Browser / OS:</span>
+                  <span className="text-white">{inspectModal.deviceInfo?.browser || 'Chrome/Browser'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => setInspectModal(null)}
+                className="w-full py-2.5 rounded-xl text-xs font-bold bg-[#1F293D] hover:bg-[#5470F4] text-white transition-all"
+              >
+                Close Audit Inspection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -495,6 +495,73 @@ export default function DeductionSettingsPage() {
               </div>
             </div>
 
+            {/* Anti-Proxy & Buddy-Punching Prevention Section */}
+            <div className="pt-5 border-t border-[#1F293D] space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                  <span>Anti-Proxy & Buddy-Punching Security Controls</span>
+                </h4>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Prevent early-arriving employees from clocking in on behalf of colleagues by logging into their accounts.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] space-y-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rule.antiProxySettings?.enforceSingleDevicePerDay ?? true}
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          antiProxySettings: {
+                            ...(rule.antiProxySettings || {}),
+                            enforceSingleDevicePerDay: e.target.checked,
+                          },
+                        })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#5470F4]"></div>
+                    <span className="ml-2.5 text-xs font-bold text-white">
+                      Device Fingerprint Lockout
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Restricts each physical device/browser to max 1 employee check-in per day. If User A clocks in on a phone/PC, User B cannot log in on that same device to check in.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] space-y-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rule.antiProxySettings?.requireSelfieVerification ?? true}
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          antiProxySettings: {
+                            ...(rule.antiProxySettings || {}),
+                            requireSelfieVerification: e.target.checked,
+                          },
+                        })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#5470F4]"></div>
+                    <span className="ml-2.5 text-xs font-bold text-white">
+                      Live Webcam Selfie Snapshot
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Requires a real-time webcam photo snapshot at clock-in. Snapshots are stored in attendance logs and visible in the CEO Roster for visual verification.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end pt-4 border-t border-[#1F293D]">
               <button
                 type="submit"
