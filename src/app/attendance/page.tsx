@@ -36,6 +36,7 @@ export default function AttendancePage() {
   const { user, hasRole } = useAuth();
   const isCEO = user?.role === 'CEO' || hasRole('CEO');
 
+
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [officeLocation, setOfficeLocation] = useState<{
     officeAddress: string;
@@ -482,13 +483,12 @@ export default function AttendancePage() {
       </div>
 
       {msg && (
-        <div className={`p-3.5 sm:p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${
-          msg.type === 'success'
+        <div className={`p-3.5 sm:p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${msg.type === 'success'
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
             : msg.type === 'warning'
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
               : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-        }`}>
+          }`}>
           {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
           <span className="leading-relaxed">{msg.text}</span>
         </div>
@@ -516,13 +516,12 @@ export default function AttendancePage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
                   <div className="flex items-center gap-2 mt-1">
                     {todayAttendance?.checkIn ? (
-                      <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${
-                        todayAttendance.status === 'present'
+                      <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${todayAttendance.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           : todayAttendance.status === 'half_day'
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                             : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
+                        }`}>
                         {todayAttendance.isLate ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                         <span className="capitalize">{todayAttendance.status.replace('_', ' ')}</span>
                         {todayAttendance.isLate && ` (${todayAttendance.minutesLate}m late)`}
@@ -634,11 +633,10 @@ export default function AttendancePage() {
                 {/* Live Distance & Boundary Status */}
                 {distanceToOffice !== null ? (
                   <div className="space-y-1.5">
-                    <div className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between ${
-                      distanceToOffice <= (officeLocation?.radiusMeters || 200)
+                    <div className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between ${distanceToOffice <= (officeLocation?.radiusMeters || 200)
                         ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                         : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                    }`}>
+                      }`}>
                       <span className="flex items-center gap-1.5">
                         {distanceToOffice <= (officeLocation?.radiusMeters || 200) ? (
                           <Navigation className="w-3.5 h-3.5 text-emerald-400" />
@@ -852,11 +850,10 @@ export default function AttendancePage() {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               onClick={() => setActiveTab('self')}
-              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === 'self'
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'self'
                   ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                   : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
-              }`}
+                }`}
             >
               My Attendance History
             </button>
@@ -864,11 +861,10 @@ export default function AttendancePage() {
             {hasRole('CEO', 'Super Admin') && (
               <button
                 onClick={() => setActiveTab('roster')}
-                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                  activeTab === 'roster'
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'roster'
                     ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                     : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
-                }`}
+                  }`}
               >
                 Today's Company Roster ({roster.length} Staff)
               </button>
@@ -924,13 +920,12 @@ export default function AttendancePage() {
                         {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${
-                          record.status === 'present'
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${record.status === 'present'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : record.status === 'half_day'
                               ? 'bg-rose-500/20 text-rose-300'
                               : 'bg-amber-500/20 text-amber-300'
-                        }`}>
+                          }`}>
                           {record.status.replace('_', ' ')}
                         </span>
                       </td>
@@ -1042,15 +1037,14 @@ export default function AttendancePage() {
                       )}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${
-                        item.status === 'present'
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${item.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : item.status === 'half_day'
                             ? 'bg-rose-500/20 text-rose-300'
                             : item.status === 'late'
                               ? 'bg-amber-500/20 text-amber-300'
                               : 'bg-gray-500/20 text-gray-400'
-                      }`}>
+                        }`}>
                         {item.status.replace('_', ' ')}
                       </span>
                     </td>
