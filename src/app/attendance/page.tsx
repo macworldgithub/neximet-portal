@@ -16,17 +16,33 @@ import {
   HelpCircle,
   Filter,
   Layers,
+  MapPin,
+  Navigation,
+  MapPinOff,
+  LocateFixed,
 } from 'lucide-react';
 
 export default function AttendancePage() {
   const { user, hasRole } = useAuth();
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [officeLocation, setOfficeLocation] = useState<{
+    officeAddress: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    enforceLocation: boolean;
+  } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [roster, setRoster] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'self' | 'roster'>('self');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [simulatedHour, setSimulatedHour] = useState('now');
+  const [simulatedLocation, setSimulatedLocation] = useState<'actual' | 'office' | 'home'>('actual');
+  const [deviceCoords, setDeviceCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [distanceToOffice, setDistanceToOffice] = useState<number | null>(null);
+  const [locLoading, setLocLoading] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Digital clock
@@ -40,12 +56,77 @@ export default function AttendancePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Haversine distance calculator
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+  };
+
+  // Obtain device GPS coordinates
+  const acquireLocation = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setLocError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocLoading(true);
+    setLocError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        };
+        setDeviceCoords(coords);
+        setLocLoading(false);
+      },
+      (err) => {
+        setLocLoading(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocError('Location permission denied. You must allow location to verify you are at the office.');
+        } else {
+          setLocError(`Could not detect GPS coordinates: ${err.message}`);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+    );
+  };
+
+  // Recalculate distance whenever coords or office location change
+  useEffect(() => {
+    if (!officeLocation) return;
+
+    if (simulatedLocation === 'office') {
+      setDistanceToOffice(15); // Simulated inside office (15 meters)
+    } else if (simulatedLocation === 'home') {
+      setDistanceToOffice(5840); // Simulated at home (5.8 km away)
+    } else if (deviceCoords) {
+      const dist = calculateDistance(
+        deviceCoords.latitude,
+        deviceCoords.longitude,
+        officeLocation.latitude,
+        officeLocation.longitude
+      );
+      setDistanceToOffice(dist);
+    }
+  }, [deviceCoords, officeLocation, simulatedLocation]);
+
   const fetchAttendanceData = async () => {
     setLoading(true);
     try {
       const todayRes = await apiGet('/attendance/today');
       if (todayRes.success) {
         setTodayAttendance(todayRes.attendance);
+        if (todayRes.officeLocation) {
+          setOfficeLocation(todayRes.officeLocation);
+        }
       }
 
       const histRes = await apiGet('/attendance/history');
@@ -68,9 +149,10 @@ export default function AttendancePage() {
 
   useEffect(() => {
     fetchAttendanceData();
+    acquireLocation();
   }, [user]);
 
-  // Handle Check-In (with optional simulation time)
+  // Handle Check-In with Location Verification
   const handleCheckIn = async () => {
     setActionLoading(true);
     setMsg(null);
@@ -78,30 +160,46 @@ export default function AttendancePage() {
 
     const today = new Date();
     if (simulatedHour === 'on_time') {
-      // 08:50 AM
       today.setHours(8, 50, 0, 0);
       customTime = today.toISOString();
     } else if (simulatedHour === 'grace') {
-      // 09:10 AM
       today.setHours(9, 10, 0, 0);
       customTime = today.toISOString();
     } else if (simulatedHour === 'late_35') {
-      // 09:35 AM (35 mins late)
       today.setHours(9, 35, 0, 0);
       customTime = today.toISOString();
     } else if (simulatedHour === 'half_day') {
-      // 10:15 AM (75 mins late -> half day)
       today.setHours(10, 15, 0, 0);
       customTime = today.toISOString();
     }
 
+    // Determine payload coordinates
+    let lat: number | undefined = undefined;
+    let lng: number | undefined = undefined;
+
+    if (simulatedLocation === 'office' && officeLocation) {
+      lat = officeLocation.latitude;
+      lng = officeLocation.longitude;
+    } else if (simulatedLocation === 'home' && officeLocation) {
+      lat = officeLocation.latitude + 0.05; // Far away (Home)
+      lng = officeLocation.longitude + 0.05;
+    } else if (deviceCoords) {
+      lat = deviceCoords.latitude;
+      lng = deviceCoords.longitude;
+    }
+
     try {
-      const res = await apiPost('/attendance/check-in', { customTime });
+      const res = await apiPost('/attendance/check-in', {
+        customTime,
+        latitude: lat,
+        longitude: lng,
+      });
+
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || 'Check-in recorded' });
+        setMsg({ type: 'success', text: res.message || 'Check-in recorded with office location verified!' });
         fetchAttendanceData();
       } else {
-        setMsg({ type: 'error', text: res.message || 'Check-in failed' });
+        setMsg({ type: 'error', text: res.message || 'Check-in rejected: Location verification failed' });
       }
     } catch (err: any) {
       setMsg({ type: 'error', text: err?.message || 'Check-in error occurred' });
@@ -236,26 +334,118 @@ export default function AttendancePage() {
                   <p className="text-[11px] text-gray-300 leading-relaxed">{todayAttendance.deductionReason}</p>
                 </div>
               )}
+
+              {/* Verified Location Stamp */}
+              {todayAttendance?.location?.isVerified && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-1">
+                  <div className="flex items-center justify-between text-emerald-400 font-bold text-[11px]">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Office Geofence Verified</span>
+                    </span>
+                    <span>{todayAttendance.location.distanceMeters !== null ? `${todayAttendance.location.distanceMeters}m from Office` : 'In Range'}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {todayAttendance.location.officeAddress || 'Neximet Head Office'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Actions & Simulation Trigger */}
             <div className="space-y-4 bg-[#161F30]/70 p-5 rounded-2xl border border-[#1F293D]">
-              <div>
-                <label className="text-xs font-bold text-white flex items-center justify-between mb-1.5">
-                  <span>Simulation Mode:</span>
-                  <span className="text-[10px] text-[#5CC5FA] font-mono">Test Deduction Engine</span>
-                </label>
-                <select
-                  value={simulatedHour}
-                  onChange={(e) => setSimulatedHour(e.target.value)}
-                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                >
-                  <option value="now">Real-Time Clock (Current Machine Time)</option>
-                  <option value="on_time">Simulate On-Time Arrival (08:50 AM)</option>
-                  <option value="grace">Simulate Grace Window (09:10 AM - 10m late)</option>
-                  <option value="late_35">Simulate Late Arrival (09:35 AM - 35m late)</option>
-                  <option value="half_day">Simulate Half-Day Penalty (10:15 AM - 75m late)</option>
-                </select>
+              {/* Office Geofencing Live Radar */}
+              <div className="p-3.5 rounded-xl bg-[#0B0F19] border border-[#1F293D] space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-300 font-bold flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#5470F4]" />
+                    <span>Office Geofence</span>
+                  </span>
+                  <button
+                    onClick={acquireLocation}
+                    disabled={locLoading}
+                    className="text-[10px] text-[#5CC5FA] hover:underline flex items-center gap-1"
+                    title="Refresh GPS location"
+                  >
+                    <LocateFixed className={`w-3 h-3 ${locLoading ? 'animate-spin' : ''}`} />
+                    <span>{locLoading ? 'Locating...' : 'Refresh GPS'}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-gray-400 truncate max-w-[160px]">
+                    {officeLocation?.officeAddress || 'Neximet Head Office'}
+                  </span>
+                  <span className="text-gray-400 font-mono">Max {officeLocation?.radiusMeters || 200}m</span>
+                </div>
+
+                {/* Live Distance & Boundary Status */}
+                {distanceToOffice !== null ? (
+                  <div className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between ${
+                    distanceToOffice <= (officeLocation?.radiusMeters || 200)
+                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                  }`}>
+                    <span className="flex items-center gap-1.5">
+                      {distanceToOffice <= (officeLocation?.radiusMeters || 200) ? (
+                        <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <MapPinOff className="w-3.5 h-3.5 text-rose-400" />
+                      )}
+                      <span>
+                        {distanceToOffice <= (officeLocation?.radiusMeters || 200)
+                          ? 'Inside Office Premises'
+                          : 'Outside Office Geofence'}
+                      </span>
+                    </span>
+                    <span className="font-mono font-bold">{distanceToOffice}m away</span>
+                  </div>
+                ) : locError ? (
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300">
+                    {locError}
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-lg bg-[#161F30] text-[11px] text-gray-400 flex items-center gap-2">
+                    <LocateFixed className="w-3.5 h-3.5 animate-spin text-[#5CC5FA]" />
+                    <span>Detecting live GPS coordinates...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Simulation Mode Controls */}
+              <div className="space-y-2 pt-1 border-t border-[#1F293D]">
+                <div>
+                  <label className="text-xs font-bold text-white flex items-center justify-between mb-1">
+                    <span>Shift Time Simulator:</span>
+                  </label>
+                  <select
+                    value={simulatedHour}
+                    onChange={(e) => setSimulatedHour(e.target.value)}
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-1.5 text-xs text-white outline-none"
+                  >
+                    <option value="now">Real-Time Machine Clock</option>
+                    <option value="on_time">Simulate On-Time Arrival (08:50 AM)</option>
+                    <option value="grace">Simulate Grace Window (09:10 AM - 10m late)</option>
+                    <option value="late_35">Simulate Late Arrival (09:35 AM - 35m late)</option>
+                    <option value="half_day">Simulate Half-Day Penalty (10:15 AM - 75m late)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-white flex items-center justify-between mb-1">
+                    <span>Location Test Mode:</span>
+                    <span className="text-[10px] text-[#5CC5FA] font-mono">Test Geofence Security</span>
+                  </label>
+                  <select
+                    value={simulatedLocation}
+                    onChange={(e) => setSimulatedLocation(e.target.value as any)}
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-1.5 text-xs text-white outline-none"
+                  >
+                    <option value="actual">Live Device GPS (Browser Location)</option>
+                    <option value="office">Simulate At Office (Inside 15m Geofence)</option>
+                    <option value="home">Simulate At Home (Remote 5.8km Away - Should Reject)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-2 pt-2">
@@ -266,7 +456,7 @@ export default function AttendancePage() {
                     className="w-full py-3 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all"
                   >
                     <UserCheck className="w-4 h-4" />
-                    <span>{actionLoading ? 'Recording...' : 'Mark Check-In Now'}</span>
+                    <span>{actionLoading ? 'Verifying Location & Checking In...' : 'Mark Check-In Now'}</span>
                   </button>
                 ) : !todayAttendance?.checkOut ? (
                   <button

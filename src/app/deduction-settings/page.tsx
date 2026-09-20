@@ -15,6 +15,9 @@ import {
   ArrowRight,
   Calculator,
   RotateCcw,
+  MapPin,
+  LocateFixed,
+  Navigation,
 } from 'lucide-react';
 
 export default function DeductionSettingsPage() {
@@ -33,7 +36,16 @@ export default function DeductionSettingsPage() {
     consecutiveLateThreshold: 3,
     consecutivePenaltyMultiplier: 1.5,
     currencySymbol: 'PKR',
+    officeLocation: {
+      officeAddress: 'Neximet Head Office, Karachi',
+      latitude: 24.8607,
+      longitude: 67.0011,
+      radiusMeters: 200,
+      enforceLocation: true,
+    },
   });
+
+  const [detectingGps, setDetectingGps] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -106,6 +118,33 @@ export default function DeductionSettingsPage() {
     });
   }, [testMinutesLate, testDailyWage, rule]);
 
+  const handleCaptureOfficeGps = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setMsg({ type: 'error', text: 'Geolocation is not supported by your browser.' });
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setRule((prev: any) => ({
+          ...prev,
+          officeLocation: {
+            ...(prev.officeLocation || {}),
+            latitude: Number(pos.coords.latitude.toFixed(6)),
+            longitude: Number(pos.coords.longitude.toFixed(6)),
+          },
+        }));
+        setDetectingGps(false);
+        setMsg({ type: 'success', text: `Captured office GPS coordinates: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}` });
+      },
+      (err) => {
+        setDetectingGps(false);
+        setMsg({ type: 'error', text: `Failed to detect GPS coordinates: ${err.message}` });
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -114,7 +153,7 @@ export default function DeductionSettingsPage() {
     try {
       const res = await apiPut('/deductions/rules', rule);
       if (res.success) {
-        setMsg({ type: 'success', text: 'Attendance & deduction policies updated successfully!' });
+        setMsg({ type: 'success', text: 'Attendance, deduction, and office geofence policies updated successfully!' });
         setRule(res.rule);
       } else {
         setMsg({ type: 'error', text: res.message || 'Failed to update rule' });
@@ -313,6 +352,146 @@ export default function DeductionSettingsPage() {
                   onChange={(e) => setRule({ ...rule, consecutivePenaltyMultiplier: Number(e.target.value) })}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
                 />
+              </div>
+            </div>
+
+            {/* Office Geofencing & Location Enforcement Section */}
+            <div className="pt-5 border-t border-[#1F293D] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-[#5470F4]" />
+                    <span>Office Geofence & Location Enforcement</span>
+                  </h4>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Prevent employees from checking in remotely from home. Enforce mandatory office GPS boundary.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCaptureOfficeGps}
+                  disabled={detectingGps}
+                  className="px-3 py-1.5 rounded-xl bg-[#161F30] hover:bg-[#1E293D] text-[#5CC5FA] border border-[#5470F4]/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <LocateFixed className={`w-3.5 h-3.5 ${detectingGps ? 'animate-spin' : ''}`} />
+                  <span>{detectingGps ? 'Detecting Location...' : 'Use My Current GPS Position'}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Office Premises Name / Address
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={rule.officeLocation?.officeAddress || ''}
+                    onChange={(e) =>
+                      setRule({
+                        ...rule,
+                        officeLocation: {
+                          ...(rule.officeLocation || {}),
+                          officeAddress: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="e.g. Neximet Head Office, Karachi"
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Office Latitude
+                  </label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={rule.officeLocation?.latitude ?? 24.8607}
+                    onChange={(e) =>
+                      setRule({
+                        ...rule,
+                        officeLocation: {
+                          ...(rule.officeLocation || {}),
+                          latitude: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white font-mono outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Office Longitude
+                  </label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    required
+                    value={rule.officeLocation?.longitude ?? 67.0011}
+                    onChange={(e) =>
+                      setRule({
+                        ...rule,
+                        officeLocation: {
+                          ...(rule.officeLocation || {}),
+                          longitude: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white font-mono outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Allowed Geofence Radius (Meters)
+                  </label>
+                  <select
+                    value={rule.officeLocation?.radiusMeters || 200}
+                    onChange={(e) =>
+                      setRule({
+                        ...rule,
+                        officeLocation: {
+                          ...(rule.officeLocation || {}),
+                          radiusMeters: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                  >
+                    <option value={50}>50 meters (Strict Building boundary)</option>
+                    <option value={100}>100 meters (Office & Parking lot)</option>
+                    <option value={200}>200 meters (Standard Campus Geofence)</option>
+                    <option value={500}>500 meters (Extended Premises)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-3 pt-5">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rule.officeLocation?.enforceLocation ?? true}
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          officeLocation: {
+                            ...(rule.officeLocation || {}),
+                            enforceLocation: e.target.checked,
+                          },
+                        })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#5470F4]"></div>
+                    <span className="ml-2.5 text-xs font-semibold text-white">
+                      Enforce Geofencing (Reject Remote Check-Ins)
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 
