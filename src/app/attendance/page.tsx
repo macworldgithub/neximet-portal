@@ -53,7 +53,7 @@ export default function AttendancePage() {
         setHistory(histRes.records);
       }
 
-      if (hasRole('CEO', 'Project Manager', 'Team Manager')) {
+      if (hasRole('CEO', 'Super Admin')) {
         const rosterRes = await apiGet('/attendance/roster');
         if (rosterRes.success) {
           setRoster(rosterRes.roster);
@@ -348,7 +348,7 @@ export default function AttendancePage() {
               My Attendance History
             </button>
 
-            {hasRole('CEO', 'Project Manager', 'Team Manager') && (
+            {hasRole('CEO', 'Super Admin') && (
               <button
                 onClick={() => setActiveTab('roster')}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'roster'

@@ -111,7 +111,7 @@ export default function DashboardPage() {
             className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#1F293D] hover:bg-[#2A374F] text-white border border-[#2A374F] flex items-center gap-2 transition-all shadow-sm"
           >
             <FolderKanban className="w-4 h-4 text-[#5CC5FA]" />
-            <span>View All Projects</span>
+            <span>{(user?.role === 'CEO' || user?.role === 'Super Admin') ? 'View All Projects' : 'View Team Projects'}</span>
           </Link>
           <Link
             href="/attendance"

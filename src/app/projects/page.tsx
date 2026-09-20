@@ -28,22 +28,36 @@ import {
 
 function ProjectsContent() {
   const searchParams = useSearchParams();
-  const initialDept = searchParams.get('dept') || 'All';
+  const initialDeptParam = searchParams.get('dept');
 
   const { user, hasRole } = useAuth();
+  const isExecutive = hasRole('CEO', 'Super Admin');
+
+  const defaultDept = isExecutive ? (initialDeptParam || 'All') : (user?.department || 'Software Development');
+  const [selectedDept, setSelectedDept] = useState(defaultDept);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDept, setSelectedDept] = useState(initialDept);
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // New project form state
-  const [newProject, setNewProject] = useState({
+  const [newProject, setNewProject] = useState<{
+    title: string;
+    code: string;
+    clientName: string;
+    department: string;
+    description: string;
+    status: string;
+    priority: string;
+    budget: number;
+    estimatedHours: number;
+    deadline: string;
+  }>({
     title: '',
     code: '',
     clientName: '',
-    department: 'Software Development',
+    department: user?.department && user.department !== 'Executive' ? user.department : 'Software Development',
     description: '',
     status: 'planning',
     priority: 'Medium',
@@ -52,10 +66,21 @@ function ProjectsContent() {
     deadline: '',
   });
 
+  // Sync selected department when user loads or role is determined
+  useEffect(() => {
+    if (!isExecutive && user?.department && user.department !== 'Executive') {
+      setSelectedDept(user.department);
+      setNewProject((prev) => ({ ...prev, department: user.department as string }));
+    } else if (isExecutive && initialDeptParam) {
+      setSelectedDept(initialDeptParam);
+    }
+  }, [user, isExecutive, initialDeptParam]);
+
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      let endpoint = `/projects?department=${encodeURIComponent(selectedDept)}&status=${encodeURIComponent(selectedStatus)}`;
+      const activeDept = !isExecutive && user?.department ? user.department : selectedDept;
+      let endpoint = `/projects?department=${encodeURIComponent(activeDept)}&status=${encodeURIComponent(selectedStatus)}`;
       if (searchQuery) {
         endpoint += `&search=${encodeURIComponent(searchQuery)}`;
       }
@@ -72,7 +97,7 @@ function ProjectsContent() {
 
   useEffect(() => {
     fetchProjects();
-  }, [selectedDept, selectedStatus, searchQuery]);
+  }, [selectedDept, selectedStatus, searchQuery, user]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,13 +124,17 @@ function ProjectsContent() {
     }
   };
 
-  const departments = [
-    { label: 'All Teams', value: 'All' },
-    { label: 'Software Development', value: 'Software Development' },
-    { label: 'Digital Marketing (SEO)', value: 'Digital Marketing (SEO)' },
-    { label: 'Graphics Designing', value: 'Graphics Designing' },
-    { label: 'WordPress Team', value: 'WordPress Team' },
-  ];
+  const departments = isExecutive
+    ? [
+        { label: 'All Teams', value: 'All' },
+        { label: 'Software Development', value: 'Software Development' },
+        { label: 'Digital Marketing (SEO)', value: 'Digital Marketing (SEO)' },
+        { label: 'Graphics Designing', value: 'Graphics Designing' },
+        { label: 'WordPress Team', value: 'WordPress Team' },
+      ]
+    : [
+        { label: `Team: ${user?.department || 'My Team'}`, value: user?.department || 'Software Development' },
+      ];
 
   const statuses = [
     { label: 'All Statuses', value: 'All' },

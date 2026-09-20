@@ -157,12 +157,15 @@ export default function Sidebar() {
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
             <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-              Departments
+              {user?.role === 'CEO' || user?.role === 'Super Admin' ? 'Departments' : 'My Team'}
             </p>
             <Building2 className="w-3.5 h-3.5 text-gray-500" />
           </div>
           <div className="space-y-1.5">
-            {departments.map((dept) => {
+            {(user?.role === 'CEO' || user?.role === 'Super Admin'
+              ? departments
+              : departments.filter((dept) => dept.name === user?.department)
+            ).map((dept) => {
               const Icon = dept.icon;
               return (
                 <Link

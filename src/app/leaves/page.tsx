@@ -162,7 +162,7 @@ export default function LeavesPage() {
         <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
           <div className="flex items-center justify-between border-b border-[#1F293D] pb-4">
             <h3 className="text-base font-bold text-white">
-              {hasRole('CEO', 'Project Manager', 'Team Manager') ? 'Team Leave Requests & Approvals' : 'My Leave Applications'}
+              {hasRole('CEO', 'Super Admin') ? 'Team Leave Requests & Approvals' : 'My Leave Applications'}
             </h3>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#161F30] text-gray-300">
               {requests.length} Records
@@ -179,7 +179,7 @@ export default function LeavesPage() {
                   <th className="py-3 px-4">Duration</th>
                   <th className="py-3 px-4">Reason</th>
                   <th className="py-3 px-4">Status</th>
-                  {hasRole('CEO', 'Project Manager', 'Team Manager') && <th className="py-3 px-4">Actions</th>}
+                  {hasRole('CEO', 'Super Admin') && <th className="py-3 px-4">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1F293D]">
@@ -210,7 +210,7 @@ export default function LeavesPage() {
                           {r.status}
                         </span>
                       </td>
-                      {hasRole('CEO', 'Project Manager', 'Team Manager') && (
+                      {hasRole('CEO', 'Super Admin') && (
                         <td className="py-3.5 px-4">
                           {r.status === 'pending' ? (
                             <div className="flex items-center gap-1.5">
