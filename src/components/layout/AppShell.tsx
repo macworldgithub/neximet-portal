@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from './Sidebar';
@@ -11,6 +11,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const isLoginPage = pathname === '/login';
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!loading && !user && !isLoginPage) {
@@ -44,11 +50,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-gray-100 flex">
-      <Sidebar />
-      <div className="flex-1 ml-72 flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-1 p-8 pt-28 max-w-7xl w-full mx-auto">
+    <div className="min-h-screen bg-[#0B0F19] text-gray-100 flex overflow-x-hidden">
+      <Sidebar
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
+      />
+      <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden">
+        <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pt-24 sm:pt-28 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>

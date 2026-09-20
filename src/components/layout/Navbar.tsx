@@ -21,10 +21,15 @@ import {
   FolderKanban,
   ExternalLink,
   AlertTriangle,
+  Menu,
 } from 'lucide-react';
 import AdminResetPasswordModal from '../employees/AdminResetPasswordModal';
 
-export default function Navbar() {
+interface NavbarProps {
+  onToggleMobileMenu?: () => void;
+}
+
+export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const { user, isSuperAdmin, logout } = useAuth();
   const [timeStr, setTimeStr] = useState('');
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
@@ -155,19 +160,30 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="h-20 bg-[#0B0F19]/90 backdrop-blur-md border-b border-[#1F293D] fixed top-0 left-72 right-0 z-30 px-8 flex items-center justify-between">
-        {/* Left: Real-time clock & shift info */}
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3 bg-[#111827] px-4 py-2 rounded-xl border border-[#1F293D]">
-            <Clock className="w-4 h-4 text-[#5CC5FA] animate-pulse" />
+      <header className="h-20 bg-[#0B0F19]/90 backdrop-blur-md border-b border-[#1F293D] fixed top-0 left-0 lg:left-72 right-0 z-30 px-3.5 sm:px-6 lg:px-8 flex items-center justify-between">
+        {/* Left: Mobile Toggle & Real-time clock & shift info */}
+        <div className="flex items-center gap-2.5 sm:gap-6">
+          {/* Mobile Drawer Trigger */}
+          {onToggleMobileMenu && (
+            <button
+              onClick={onToggleMobileMenu}
+              className="lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] border border-[#1F293D] transition-colors"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
+
+          <div className="flex items-center gap-2 sm:gap-3 bg-[#111827] px-3 sm:px-4 py-2 rounded-xl border border-[#1F293D]">
+            <Clock className="w-4 h-4 text-[#5CC5FA] animate-pulse shrink-0" />
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-white font-mono">{timeStr || '09:00:00 AM'}</span>
-              <span className="text-[10px] text-gray-400">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
+              <span className="text-[10px] text-gray-400 hidden sm:block">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
             </div>
           </div>
 
-          {/* Quick Attendance Pill */}
-          <div className="flex items-center gap-2">
+          {/* Quick Attendance Pill (hidden on very small screens to avoid header squish) */}
+          <div className="hidden sm:flex items-center gap-2">
             {todayAttendance?.checkIn ? (
               <div className="flex items-center gap-2">
                 <span
@@ -216,13 +232,13 @@ export default function Navbar() {
         </div>
 
         {/* Right: Notifications, User details & Sign Out */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {/* Super Admin Unified Notification Center */}
           {isSuperAdmin && (
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                className={`relative p-2.5 rounded-xl border transition-all ${
+                className={`relative p-2 sm:p-2.5 rounded-xl border transition-all ${
                   totalUnread > 0
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
                     : 'bg-[#111827] text-gray-400 border-[#1F293D] hover:text-white hover:border-[#5470F4]/40'
@@ -232,17 +248,17 @@ export default function Navbar() {
                 <Bell className="w-4 h-4" />
                 {totalUnread > 0 && (
                   <>
-                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold flex items-center justify-center shadow-lg shadow-rose-500/40">
+                    <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-rose-500 text-white font-mono text-[9px] sm:text-[10px] font-bold flex items-center justify-center shadow-lg shadow-rose-500/40">
                       {totalUnread}
                     </span>
-                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-400 animate-ping opacity-75" />
+                    <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-rose-400 animate-ping opacity-75" />
                   </>
                 )}
               </button>
 
               {/* Notification Dropdown Panel */}
               {showNotifDropdown && (
-                <div className="absolute right-0 mt-3 w-88 sm:w-[440px] bg-[#111827] border border-[#1F293D] rounded-3xl shadow-2xl shadow-black/90 p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute right-0 mt-3 w-[calc(100vw-32px)] sm:w-[440px] max-w-[440px] bg-[#111827] border border-[#1F293D] rounded-3xl shadow-2xl shadow-black/90 p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                   {/* Header */}
                   <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
                     <div className="flex items-center gap-2">

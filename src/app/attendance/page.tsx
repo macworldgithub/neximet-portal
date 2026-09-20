@@ -26,10 +26,16 @@ import {
   Eye,
   X,
   Laptop,
+  Sliders,
+  Check,
+  Radio,
+  Lock,
 } from 'lucide-react';
 
 export default function AttendancePage() {
   const { user, hasRole } = useAuth();
+  const isCEO = user?.role === 'CEO' || hasRole('CEO');
+
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [officeLocation, setOfficeLocation] = useState<{
     officeAddress: string;
@@ -51,16 +57,21 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<'self' | 'roster'>('self');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // CEO Simulation & Testing Sandbox State (Only accessible to CEO)
   const [simulatedHour, setSimulatedHour] = useState('now');
   const [simulatedLocation, setSimulatedLocation] = useState<'actual' | 'office' | 'home'>('actual');
   const [simulatedDevice, setSimulatedDevice] = useState<'actual' | 'secondary'>('actual');
+  const [showCeoSimulator, setShowCeoSimulator] = useState(false);
+
+  // Live Automatic Telemetry State
   const [deviceCoords, setDeviceCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [distanceToOffice, setDistanceToOffice] = useState<number | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
-  // Anti-Proxy: Device ID Fingerprint
+  // Anti-Proxy: Unique Persistent Device ID Fingerprint
   const [deviceId, setDeviceId] = useState<string>('');
 
   // Anti-Proxy: Selfie Camera Modal State
@@ -70,7 +81,7 @@ export default function AttendancePage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStarting, setCameraStarting] = useState(false);
 
-  // Photo Inspect Modal for CEO
+  // Photo Inspect Modal for CEO Audit
   const [inspectModal, setInspectModal] = useState<{
     isOpen: boolean;
     photo: string;
@@ -84,11 +95,11 @@ export default function AttendancePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Digital clock
+  // Live Real-Time Digital Clock
   const [currentTime, setCurrentTime] = useState('');
   useEffect(() => {
     const updateTime = () => {
-      setCurrentTime(new Date().toLocaleTimeString());
+      setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -121,7 +132,7 @@ export default function AttendancePage() {
     return Math.round(R * c);
   };
 
-  // Obtain device GPS coordinates
+  // Obtain real device GPS coordinates automatically
   const acquireLocation = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setLocError('Geolocation is not supported by your browser.');
@@ -141,7 +152,11 @@ export default function AttendancePage() {
       (err) => {
         setLocLoading(false);
         if (err.code === err.PERMISSION_DENIED) {
-          setLocError('Location permission denied. You must allow location to verify you are at the office.');
+          setLocError('Location permission denied. Please allow GPS location to verify office geofence.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setLocError('GPS position unavailable. Please ensure location services are enabled.');
+        } else if (err.code === err.TIMEOUT) {
+          setLocError('Location request timed out. Please click "Refresh GPS".');
         } else {
           setLocError(`Could not detect GPS coordinates: ${err.message}`);
         }
@@ -150,13 +165,13 @@ export default function AttendancePage() {
     );
   };
 
-  // Recalculate distance whenever coords or office location change
+  // Recalculate distance whenever coords, office location, or CEO simulation change
   useEffect(() => {
     if (!officeLocation) return;
 
-    if (simulatedLocation === 'office') {
+    if (isCEO && simulatedLocation === 'office') {
       setDistanceToOffice(15); // Simulated inside office (15 meters)
-    } else if (simulatedLocation === 'home') {
+    } else if (isCEO && simulatedLocation === 'home') {
       setDistanceToOffice(5840); // Simulated at home (5.8 km away)
     } else if (deviceCoords) {
       const dist = calculateDistance(
@@ -167,7 +182,7 @@ export default function AttendancePage() {
       );
       setDistanceToOffice(dist);
     }
-  }, [deviceCoords, officeLocation, simulatedLocation]);
+  }, [deviceCoords, officeLocation, simulatedLocation, isCEO]);
 
   const fetchAttendanceData = async () => {
     setLoading(true);
@@ -195,7 +210,7 @@ export default function AttendancePage() {
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Attendance fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -206,7 +221,7 @@ export default function AttendancePage() {
     acquireLocation();
   }, [user]);
 
-  // Webcam Management
+  // Webcam Stream Management
   const startCamera = async () => {
     setCameraError(null);
     setCameraStarting(true);
@@ -218,8 +233,8 @@ export default function AttendancePage() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 400 },
-          height: { ideal: 300 },
+          width: { ideal: 480 },
+          height: { ideal: 360 },
         },
         audio: false,
       });
@@ -230,7 +245,9 @@ export default function AttendancePage() {
       }
     } catch (err: any) {
       console.warn('Camera stream error:', err);
-      setCameraError(err.message || 'Could not access webcam camera. You can use simulation snapshot if camera hardware is unavailable.');
+      setCameraError(
+        err.message || 'Could not access webcam camera. Please check camera permissions in your browser.'
+      );
     } finally {
       setCameraStarting(false);
     }
@@ -262,8 +279,8 @@ export default function AttendancePage() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const width = video.videoWidth || 320;
-      const height = video.videoHeight || 240;
+      const width = video.videoWidth || 360;
+      const height = video.videoHeight || 270;
 
       canvas.width = width;
       canvas.height = height;
@@ -273,52 +290,52 @@ export default function AttendancePage() {
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setCapturedPhoto(dataUrl);
         stopCamera();
       }
     }
   };
 
-  // Generate a mock selfie snapshot for demo / sandbox environments
+  // Generate a mock selfie snapshot (Restricted to CEO testing)
   const handleSimulateSelfie = () => {
+    if (!isCEO) return;
     if (canvasRef.current) {
       const canvas = canvasRef.current;
-      canvas.width = 320;
-      canvas.height = 240;
+      canvas.width = 360;
+      canvas.height = 270;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Draw modern gradient background
-        const grad = ctx.createLinearGradient(0, 0, 320, 240);
+        const grad = ctx.createLinearGradient(0, 0, 360, 270);
         grad.addColorStop(0, '#1E293B');
         grad.addColorStop(1, '#0F172A');
         ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 320, 240);
+        ctx.fillRect(0, 0, 360, 270);
 
         // Draw avatar circle
         ctx.beginPath();
-        ctx.arc(160, 100, 50, 0, Math.PI * 2);
+        ctx.arc(180, 115, 55, 0, Math.PI * 2);
         ctx.fillStyle = '#5470F4';
         ctx.fill();
 
         // Draw initials
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 28px sans-serif';
+        ctx.font = 'bold 30px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const initials = user?.name ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'ME';
-        ctx.fillText(initials, 160, 100);
+        ctx.fillText(initials, 180, 115);
 
         // Draw timestamp & verified tag
         ctx.fillStyle = '#10B981';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText('✓ LIVE SELFIE VERIFIED', 160, 175);
+        ctx.font = 'bold 13px sans-serif';
+        ctx.fillText('✓ LIVE SELFIE VERIFIED', 180, 195);
 
         ctx.fillStyle = '#94A3B8';
-        ctx.font = '10px monospace';
-        ctx.fillText(new Date().toLocaleTimeString() + ' - Office Cam', 160, 195);
+        ctx.font = '11px monospace';
+        ctx.fillText(new Date().toLocaleTimeString() + ' • Verified Office Device', 180, 220);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setCapturedPhoto(dataUrl);
         stopCamera();
       }
@@ -340,29 +357,32 @@ export default function AttendancePage() {
     setMsg(null);
     let customTime: string | undefined = undefined;
 
-    const today = new Date();
-    if (simulatedHour === 'on_time') {
-      today.setHours(8, 50, 0, 0);
-      customTime = today.toISOString();
-    } else if (simulatedHour === 'grace') {
-      today.setHours(9, 10, 0, 0);
-      customTime = today.toISOString();
-    } else if (simulatedHour === 'late_35') {
-      today.setHours(9, 35, 0, 0);
-      customTime = today.toISOString();
-    } else if (simulatedHour === 'half_day') {
-      today.setHours(10, 15, 0, 0);
-      customTime = today.toISOString();
+    // CEO-only time simulation
+    if (isCEO) {
+      const today = new Date();
+      if (simulatedHour === 'on_time') {
+        today.setHours(8, 50, 0, 0);
+        customTime = today.toISOString();
+      } else if (simulatedHour === 'grace') {
+        today.setHours(9, 10, 0, 0);
+        customTime = today.toISOString();
+      } else if (simulatedHour === 'late_35') {
+        today.setHours(9, 35, 0, 0);
+        customTime = today.toISOString();
+      } else if (simulatedHour === 'half_day') {
+        today.setHours(10, 15, 0, 0);
+        customTime = today.toISOString();
+      }
     }
 
     // Determine payload coordinates
     let lat: number | undefined = undefined;
     let lng: number | undefined = undefined;
 
-    if (simulatedLocation === 'office' && officeLocation) {
+    if (isCEO && simulatedLocation === 'office' && officeLocation) {
       lat = officeLocation.latitude;
       lng = officeLocation.longitude;
-    } else if (simulatedLocation === 'home' && officeLocation) {
+    } else if (isCEO && simulatedLocation === 'home' && officeLocation) {
       lat = officeLocation.latitude + 0.05; // Far away (Home)
       lng = officeLocation.longitude + 0.05;
     } else if (deviceCoords) {
@@ -371,7 +391,7 @@ export default function AttendancePage() {
     }
 
     // Determine device ID
-    const activeDeviceId = simulatedDevice === 'secondary'
+    const activeDeviceId = (isCEO && simulatedDevice === 'secondary')
       ? 'dev_secondary_device_99'
       : deviceId;
 
@@ -381,13 +401,13 @@ export default function AttendancePage() {
         latitude: lat,
         longitude: lng,
         deviceId: activeDeviceId,
-        deviceType: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop / Laptop',
-        browser: navigator.userAgent.includes('Chrome') ? 'Google Chrome' : navigator.userAgent.includes('Firefox') ? 'Mozilla Firefox' : 'Web Browser',
+        deviceType: typeof navigator !== 'undefined' && navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop / Laptop',
+        browser: typeof navigator !== 'undefined' && navigator.userAgent.includes('Chrome') ? 'Google Chrome' : navigator.userAgent.includes('Firefox') ? 'Mozilla Firefox' : 'Web Browser',
         photo: photoPayload || undefined,
       });
 
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || 'Check-in recorded with Anti-Proxy and Office Geofence Verified!' });
+        setMsg({ type: 'success', text: res.message || 'Check-in successfully recorded with live GPS & anti-proxy verification!' });
         closeSelfieModal();
         fetchAttendanceData();
       } else {
@@ -407,7 +427,7 @@ export default function AttendancePage() {
     try {
       const res = await apiPost('/attendance/check-out');
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || 'Check-out recorded' });
+        setMsg({ type: 'success', text: res.message || 'Check-out recorded successfully' });
         fetchAttendanceData();
       } else {
         setMsg({ type: 'error', text: res.message || 'Check-out failed' });
@@ -419,44 +439,50 @@ export default function AttendancePage() {
     }
   };
 
+  const detectedDeviceName = typeof navigator !== 'undefined'
+    ? navigator.userAgent.includes('Mobile')
+      ? 'Mobile Device'
+      : 'Workstation / Laptop'
+    : 'Authenticated Device';
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Hidden canvas for snapshot rendering */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Title & Shift Overview */}
+      {/* Header & Badges */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <Clock className="w-6 h-6 text-[#5470F4]" />
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-[#5470F4]" />
             <span>Attendance & Clock-In Management</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Automated late arrival tracking, office GPS geofencing, anti-proxy buddy punching protection, and holiday quotas.
+            Live GPS geofencing, single-device lock, anti-proxy facial verification, and automated deduction tracking.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="bg-[#111827] border border-[#1F293D] px-3.5 py-2 rounded-2xl flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <div className="bg-[#111827] border border-[#1F293D] px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-purple-400 animate-pulse shrink-0" />
             <div className="text-xs">
-              <span className="text-gray-400 block text-[10px]">Anti-Proxy Shield</span>
-              <span className="text-white font-bold">1-Device Lock + Live Selfie</span>
+              <span className="text-gray-400 block text-[9px] sm:text-[10px]">Anti-Proxy Shield</span>
+              <span className="text-white font-bold text-[11px] sm:text-xs">1-Device Lock + Live Selfie</span>
             </div>
           </div>
 
-          <div className="bg-[#111827] border border-[#1F293D] px-3.5 py-2 rounded-2xl flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="bg-[#111827] border border-[#1F293D] px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl flex items-center gap-2.5 shadow-sm">
+            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             <div className="text-xs">
-              <span className="text-gray-400 block text-[10px]">Active Shift</span>
-              <span className="text-white font-bold">09:00 AM - 06:00 PM (15m Grace)</span>
+              <span className="text-gray-400 block text-[9px] sm:text-[10px]">Active Shift</span>
+              <span className="text-white font-bold text-[11px] sm:text-xs">09:00 AM - 06:00 PM (15m Grace)</span>
             </div>
           </div>
         </div>
       </div>
 
       {msg && (
-        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${
+        <div className={`p-3.5 sm:p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${
           msg.type === 'success'
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
             : msg.type === 'warning'
@@ -468,12 +494,12 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Main Terminal & Holiday Balance Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Terminal & Leave Balance Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Interactive Check-In / Check-Out Station */}
-        <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+        <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-6">
           <div className="flex items-center justify-between border-b border-[#1F293D] pb-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-[#5470F4]" />
               <span>Personal Time Terminal</span>
             </h3>
@@ -482,7 +508,7 @@ export default function AttendancePage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Today's Status Details */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -490,14 +516,14 @@ export default function AttendancePage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
                   <div className="flex items-center gap-2 mt-1">
                     {todayAttendance?.checkIn ? (
-                      <span className={`text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${
+                      <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${
                         todayAttendance.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           : todayAttendance.status === 'half_day'
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                             : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}>
-                        {todayAttendance.isLate ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                        {todayAttendance.isLate ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                         <span className="capitalize">{todayAttendance.status.replace('_', ' ')}</span>
                         {todayAttendance.isLate && ` (${todayAttendance.minutesLate}m late)`}
                       </span>
@@ -523,7 +549,7 @@ export default function AttendancePage() {
                     <img
                       src={todayAttendance.photo}
                       alt="Today's Check-in Selfie"
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-400/50 shadow-md group-hover:scale-105 transition-transform"
+                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-emerald-400/50 shadow-md group-hover:scale-105 transition-transform"
                     />
                     <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow">
                       <Camera className="w-2.5 h-2.5" />
@@ -585,19 +611,19 @@ export default function AttendancePage() {
               )}
             </div>
 
-            {/* Actions & Simulation Trigger */}
-            <div className="space-y-4 bg-[#161F30]/70 p-5 rounded-2xl border border-[#1F293D]">
-              {/* Office Geofencing Live Radar */}
+            {/* Actions & Automatic Telemetry Station */}
+            <div className="space-y-4 bg-[#161F30]/70 p-4 sm:p-5 rounded-2xl border border-[#1F293D]">
+              {/* Automated Office Geofencing Live Radar */}
               <div className="p-3 rounded-xl bg-[#0B0F19] border border-[#1F293D] space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-300 font-bold flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-[#5470F4]" />
-                    <span>Office Geofence</span>
+                    <span>Live Office GPS Geofence</span>
                   </span>
                   <button
                     onClick={acquireLocation}
                     disabled={locLoading}
-                    className="text-[10px] text-[#5CC5FA] hover:underline flex items-center gap-1"
+                    className="text-[10px] text-[#5CC5FA] hover:underline flex items-center gap-1 font-semibold"
                     title="Refresh GPS location"
                   >
                     <LocateFixed className={`w-3 h-3 ${locLoading ? 'animate-spin' : ''}`} />
@@ -607,94 +633,149 @@ export default function AttendancePage() {
 
                 {/* Live Distance & Boundary Status */}
                 {distanceToOffice !== null ? (
-                  <div className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between ${
-                    distanceToOffice <= (officeLocation?.radiusMeters || 200)
-                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                      : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                  }`}>
-                    <span className="flex items-center gap-1.5">
-                      {distanceToOffice <= (officeLocation?.radiusMeters || 200) ? (
-                        <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <MapPinOff className="w-3.5 h-3.5 text-rose-400" />
-                      )}
-                      <span>
-                        {distanceToOffice <= (officeLocation?.radiusMeters || 200)
-                          ? 'Inside Office Premises'
-                          : 'Outside Office Geofence'}
+                  <div className="space-y-1.5">
+                    <div className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between ${
+                      distanceToOffice <= (officeLocation?.radiusMeters || 200)
+                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                    }`}>
+                      <span className="flex items-center gap-1.5">
+                        {distanceToOffice <= (officeLocation?.radiusMeters || 200) ? (
+                          <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <MapPinOff className="w-3.5 h-3.5 text-rose-400" />
+                        )}
+                        <span className="text-[11px] sm:text-xs">
+                          {distanceToOffice <= (officeLocation?.radiusMeters || 200)
+                            ? 'Inside Office Premises'
+                            : 'Outside Office Geofence'}
+                        </span>
                       </span>
-                    </span>
-                    <span className="font-mono font-bold">{distanceToOffice}m</span>
+                      <span className="font-mono font-bold text-xs">{distanceToOffice}m</span>
+                    </div>
+
+                    {deviceCoords && (
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 px-1 font-mono">
+                        <span>Lat: {deviceCoords.latitude.toFixed(4)}°</span>
+                        <span>Lng: {deviceCoords.longitude.toFixed(4)}°</span>
+                      </div>
+                    )}
                   </div>
                 ) : locError ? (
-                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300">
-                    {locError}
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1">
+                    <p>{locError}</p>
+                    <button
+                      onClick={acquireLocation}
+                      className="text-[10px] text-[#5CC5FA] underline block font-semibold"
+                    >
+                      Click here to retry GPS permission
+                    </button>
                   </div>
                 ) : (
                   <div className="p-2 rounded-lg bg-[#161F30] text-[11px] text-gray-400 flex items-center gap-2">
                     <LocateFixed className="w-3.5 h-3.5 animate-spin text-[#5CC5FA]" />
-                    <span>Detecting live GPS coordinates...</span>
+                    <span>Automatically acquiring live GPS coordinates...</span>
                   </div>
                 )}
               </div>
 
-              {/* Simulation Mode Controls */}
-              <div className="space-y-2 pt-1 border-t border-[#1F293D]">
-                <div>
-                  <label className="text-xs font-bold text-white flex items-center justify-between mb-1">
-                    <span>Shift Time Simulator:</span>
-                  </label>
-                  <select
-                    value={simulatedHour}
-                    onChange={(e) => setSimulatedHour(e.target.value)}
-                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-1.5 text-xs text-white outline-none"
-                  >
-                    <option value="now">Real-Time Machine Clock</option>
-                    <option value="on_time">Simulate On-Time Arrival (08:50 AM)</option>
-                    <option value="grace">Simulate Grace Window (09:10 AM - 10m late)</option>
-                    <option value="late_35">Simulate Late Arrival (09:35 AM - 35m late)</option>
-                    <option value="half_day">Simulate Half-Day Penalty (10:15 AM - 75m late)</option>
-                  </select>
+              {/* Automatic Device Identification & Lock */}
+              <div className="p-3 rounded-xl bg-[#0B0F19] border border-[#1F293D] space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-gray-300">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <Laptop className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                    <span>Hardware Signature</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>1-Device Locked</span>
+                  </span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
-                      GPS Geofence:
-                    </label>
-                    <select
-                      value={simulatedLocation}
-                      onChange={(e) => setSimulatedLocation(e.target.value as any)}
-                      className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-2.5 py-1.5 text-[11px] text-white outline-none"
-                    >
-                      <option value="actual">Live GPS</option>
-                      <option value="office">At Office (15m)</option>
-                      <option value="home">At Home (5.8km)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
-                      Device Test:
-                    </label>
-                    <select
-                      value={simulatedDevice}
-                      onChange={(e) => setSimulatedDevice(e.target.value as any)}
-                      className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-2.5 py-1.5 text-[11px] text-white outline-none"
-                    >
-                      <option value="actual">My Device ({deviceId.substring(0, 8)})</option>
-                      <option value="secondary">Shared Device (Conflict)</option>
-                    </select>
-                  </div>
+                <div className="flex items-center justify-between text-[11px] text-gray-400 pt-0.5">
+                  <span>{detectedDeviceName}</span>
+                  <span className="font-mono text-white font-semibold">
+                    {deviceId ? deviceId.substring(0, 12) + '...' : 'Registering...'}
+                  </span>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-2">
+              {/* CEO-Exclusive Sandbox Testing Panel (Hidden for all other users) */}
+              {isCEO && (
+                <div className="pt-2 border-t border-[#1F293D] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>CEO QA Testing Sandbox</span>
+                    </span>
+                    <button
+                      onClick={() => setShowCeoSimulator(!showCeoSimulator)}
+                      className="text-[10px] text-[#5CC5FA] hover:underline font-semibold"
+                    >
+                      {showCeoSimulator ? 'Hide Controls' : 'Show Simulator'}
+                    </button>
+                  </div>
+
+                  {showCeoSimulator && (
+                    <div className="p-3 rounded-xl bg-[#0B0F19] border border-amber-500/30 space-y-2.5 animate-in fade-in duration-150">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                          Shift Time Simulator:
+                        </label>
+                        <select
+                          value={simulatedHour}
+                          onChange={(e) => setSimulatedHour(e.target.value)}
+                          className="w-full bg-[#161F30] border border-[#1F293D] focus:border-amber-400 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none"
+                        >
+                          <option value="now">Real-Time Machine Clock (Default)</option>
+                          <option value="on_time">Simulate On-Time Arrival (08:50 AM)</option>
+                          <option value="grace">Simulate Grace Window (09:10 AM - 10m late)</option>
+                          <option value="late_35">Simulate Late Arrival (09:35 AM - 35m late)</option>
+                          <option value="half_day">Simulate Half-Day Penalty (10:15 AM - 75m late)</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-300 block mb-1">
+                            GPS Geofence:
+                          </label>
+                          <select
+                            value={simulatedLocation}
+                            onChange={(e) => setSimulatedLocation(e.target.value as any)}
+                            className="w-full bg-[#161F30] border border-[#1F293D] rounded-xl px-2 py-1.5 text-[11px] text-white outline-none"
+                          >
+                            <option value="actual">Live GPS (Default)</option>
+                            <option value="office">At Office (15m)</option>
+                            <option value="home">At Home (5.8km away)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-300 block mb-1">
+                            Device Test:
+                          </label>
+                          <select
+                            value={simulatedDevice}
+                            onChange={(e) => setSimulatedDevice(e.target.value as any)}
+                            className="w-full bg-[#161F30] border border-[#1F293D] rounded-xl px-2 py-1.5 text-[11px] text-white outline-none"
+                          >
+                            <option value="actual">My Device ({deviceId.substring(0, 6)})</option>
+                            <option value="secondary">Shared Device (Conflict)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
                 {!todayAttendance?.checkIn ? (
                   <button
                     onClick={initiateCheckIn}
                     disabled={actionLoading}
-                    className="w-full py-3 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all"
+                    className="w-full py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all disabled:opacity-50"
                   >
                     <Camera className="w-4 h-4" />
                     <span>{actionLoading ? 'Verifying & Clocking In...' : 'Verify Selfie & Clock-In'}</span>
@@ -703,7 +784,7 @@ export default function AttendancePage() {
                   <button
                     onClick={handleCheckOut}
                     disabled={actionLoading}
-                    className="w-full py-3 rounded-xl text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2 transition-all"
+                    className="w-full py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                     <Clock className="w-4 h-4" />
                     <span>{actionLoading ? 'Recording...' : 'Mark Check-Out Now'}</span>
@@ -719,7 +800,7 @@ export default function AttendancePage() {
         </div>
 
         {/* Holidays & Leaves Left Balance Card */}
-        <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-5 flex flex-col justify-between">
+        <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -732,7 +813,7 @@ export default function AttendancePage() {
             </div>
 
             <div className="text-center py-2">
-              <span className="text-4xl font-black text-white tracking-tight">
+              <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                 {(user?.leaveBalances?.casual || 0) + (user?.leaveBalances?.sick || 0) + (user?.leaveBalances?.annual || 0)}
               </span>
               <span className="text-xs text-gray-400 block mt-0.5">Total Days Remaining</span>
@@ -758,7 +839,7 @@ export default function AttendancePage() {
 
           <a
             href="/leaves"
-            className="w-full py-2.5 rounded-xl text-xs font-bold text-center bg-[#1F293D] hover:bg-[#5470F4] text-white transition-all block"
+            className="w-full py-2.5 rounded-xl text-xs font-bold text-center bg-[#1F293D] hover:bg-[#5470F4] text-white transition-all block mt-2"
           >
             Apply for Time Off →
           </a>
@@ -766,12 +847,12 @@ export default function AttendancePage() {
       </div>
 
       {/* Toggle View: My Attendance Log vs Daily Team Roster */}
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1F293D] pb-4">
-          <div className="flex items-center gap-3">
+      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1F293D] pb-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               onClick={() => setActiveTab('self')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'self'
                   ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                   : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
@@ -783,7 +864,7 @@ export default function AttendancePage() {
             {hasRole('CEO', 'Super Admin') && (
               <button
                 onClick={() => setActiveTab('roster')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                   activeTab === 'roster'
                     ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                     : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
@@ -797,8 +878,8 @@ export default function AttendancePage() {
 
         {/* Tab 1: Personal History Table */}
         {activeTab === 'self' ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+            <table className="w-full text-left text-xs min-w-[720px]">
               <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
                 <tr>
                   <th className="py-3 px-4">Date</th>
@@ -884,8 +965,8 @@ export default function AttendancePage() {
           </div>
         ) : (
           /* Tab 2: Company Roster View with Anti-Proxy Inspection for CEO */
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+            <table className="w-full text-left text-xs min-w-[800px]">
               <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
                 <tr>
                   <th className="py-3 px-4">Employee</th>
@@ -993,23 +1074,23 @@ export default function AttendancePage() {
 
       {/* MODAL 1: Live Webcam Selfie Capture Viewfinder */}
       {cameraModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-md w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <div className="flex items-center gap-2">
                 <Camera className="w-5 h-5 text-purple-400" />
-                <h3 className="text-base font-bold text-white">Live Identity Verification</h3>
+                <h3 className="text-sm sm:text-base font-bold text-white">Live Identity Verification</h3>
               </div>
               <button
                 onClick={closeSelfieModal}
-                className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <p className="text-xs text-gray-300 leading-relaxed">
-              To prevent buddy-punching & proxy check-ins, please take a live webcam snapshot to verify your physical presence.
+              To prevent proxy check-ins, please take a live webcam snapshot to verify your physical presence.
             </p>
 
             {/* Video Viewfinder / Captured Photo Preview */}
@@ -1034,11 +1115,19 @@ export default function AttendancePage() {
                       <AlertTriangle className="w-8 h-8 text-amber-400" />
                       <p className="text-xs text-amber-300">{cameraError}</p>
                       <button
-                        onClick={handleSimulateSelfie}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow"
+                        onClick={startCamera}
+                        className="px-3 py-1.5 rounded-xl bg-[#161F30] hover:bg-[#1E293D] text-[#5CC5FA] text-xs font-bold border border-[#1F293D] transition-all shadow"
                       >
-                        Generate Verified Snapshot (Demo)
+                        Retry Camera
                       </button>
+                      {isCEO && (
+                        <button
+                          onClick={handleSimulateSelfie}
+                          className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow"
+                        >
+                          Generate Verified Snapshot (CEO Test)
+                        </button>
+                      )}
                     </div>
                   )}
                   {/* Viewfinder Target Graphic */}
@@ -1067,9 +1156,9 @@ export default function AttendancePage() {
             <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D] flex items-center justify-between text-xs text-gray-300">
               <span className="flex items-center gap-1.5">
                 <Laptop className="w-3.5 h-3.5 text-[#5CC5FA]" />
-                <span>Device Fingerprint:</span>
+                <span>Device Signature:</span>
               </span>
-              <span className="font-mono text-white font-bold">{deviceId ? deviceId.substring(0, 14) + '...' : 'Generating...'}</span>
+              <span className="font-mono text-white font-bold">{deviceId ? deviceId.substring(0, 14) + '...' : 'Registering...'}</span>
             </div>
 
             {/* Action Buttons */}
@@ -1084,13 +1173,15 @@ export default function AttendancePage() {
                     <Camera className="w-4 h-4" />
                     <span>Take Snapshot</span>
                   </button>
-                  <button
-                    onClick={handleSimulateSelfie}
-                    className="px-3 py-3 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-[#5CC5FA] border border-[#1F293D] transition-all"
-                    title="Simulate Photo for Testing"
-                  >
-                    Simulate
-                  </button>
+                  {isCEO && (
+                    <button
+                      onClick={handleSimulateSelfie}
+                      className="px-3 py-3 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-amber-300 border border-amber-500/30 transition-all"
+                      title="Simulate Photo for Testing (CEO Only)"
+                    >
+                      Simulate
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
@@ -1118,16 +1209,16 @@ export default function AttendancePage() {
 
       {/* MODAL 2: Photo & Anti-Proxy Audit Inspector for CEO */}
       {inspectModal?.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-lg w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-[#5470F4]" />
-                <h3 className="text-base font-bold text-white">Attendance Verification Audit</h3>
+                <h3 className="text-sm sm:text-base font-bold text-white">Attendance Verification Audit</h3>
               </div>
               <button
                 onClick={() => setInspectModal(null)}
-                className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
