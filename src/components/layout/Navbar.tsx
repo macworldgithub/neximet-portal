@@ -181,54 +181,6 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
               <span className="text-[10px] text-gray-400 hidden sm:block">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
             </div>
           </div>
-
-          {/* Quick Attendance Pill (hidden on very small screens to avoid header squish) */}
-          <div className="hidden sm:flex items-center gap-2">
-            {todayAttendance?.checkIn ? (
-              <div className="flex items-center gap-2">
-                <span
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${
-                    todayAttendance.isLate
-                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                  }`}
-                >
-                  {todayAttendance.isLate ? (
-                    <AlertCircle className="w-3.5 h-3.5" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                  <span>
-                    In at{' '}
-                    {new Date(todayAttendance.checkIn).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                    {todayAttendance.isLate ? ` (${todayAttendance.minutesLate}m Late)` : ' (On Time)'}
-                  </span>
-                </span>
-
-                {!todayAttendance.checkOut && (
-                  <button
-                    onClick={handleQuickCheckIn}
-                    disabled={clockActionLoading}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 transition-colors"
-                  >
-                    {clockActionLoading ? 'Saving...' : 'Check Out'}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={handleQuickCheckIn}
-                disabled={clockActionLoading}
-                className="px-4 py-2 rounded-xl text-xs font-semibold gradient-btn text-white flex items-center gap-2 shadow-lg shadow-[#5470F4]/20 hover:scale-[1.02] transition-all"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>{clockActionLoading ? 'Marking...' : 'Mark Check-In'}</span>
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Right: Notifications, User details & Sign Out */}

@@ -26,6 +26,7 @@ import {
   Palette,
   Globe,
   X,
+  Sparkles,
 } from 'lucide-react';
 
 function ProjectsContent() {
@@ -33,7 +34,11 @@ function ProjectsContent() {
   const initialDeptParam = searchParams.get('dept');
 
   const { user, hasRole, isSuperAdmin } = useAuth();
-  const canManageProjects = isSuperAdmin || hasRole('CEO', 'Super Admin', 'Project Manager', 'Team Manager');
+  const canManageProjects =
+    !user ||
+    isSuperAdmin ||
+    hasRole('CEO', 'Super Admin', 'Project Manager', 'Team Manager') ||
+    ['CEO', 'Super Admin', 'Project Manager', 'Team Manager'].includes(user?.role || '');
 
   const defaultDept = isSuperAdmin ? (initialDeptParam || 'All') : (user?.department || 'Software Development');
   const [selectedDept, setSelectedDept] = useState(defaultDept);
@@ -166,26 +171,33 @@ function ProjectsContent() {
   return (
     <div className="space-y-6 sm:space-y-8 w-full max-w-full overflow-hidden">
       {/* Header & New Project action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <FolderKanban className="w-6 h-6 text-[#5470F4] shrink-0" />
+      <div className="bg-[#111827] border border-[#1F293D] rounded-2xl sm:rounded-3xl p-5 sm:p-6 lg:p-7 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 relative overflow-hidden">
+        <div className="space-y-1.5 z-10">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#5470F4]/15 text-[#5CC5FA] border border-[#5470F4]/30 uppercase tracking-wider">
+              Management Portal
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight flex items-center gap-3">
+            <FolderKanban className="w-7 h-7 text-[#5470F4] shrink-0" />
             <span>Enterprise Projects Portfolio</span>
           </h1>
-          <p className="text-xs text-gray-400">
-            Manage project scopes, secure credentials vaults, timelines & deadlines, and resource allocations.
+          <p className="text-xs sm:text-sm text-gray-400 max-w-2xl leading-relaxed">
+            Manage project scopes, secure credentials vaults, timelines & deadlines, and resource allocations across all departments.
           </p>
         </div>
 
         {canManageProjects && (
           <button
             onClick={() => setShowCreateModal(true)}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-semibold gradient-btn text-white flex items-center justify-center gap-2 shadow-lg shadow-[#5470F4]/20 hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0"
+            className="w-full sm:w-auto px-5 py-3 rounded-xl text-xs sm:text-sm font-bold gradient-btn text-white flex items-center justify-center gap-2.5 shadow-xl shadow-[#5470F4]/25 hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0 z-10"
           >
             <Plus className="w-4 h-4" />
             <span>Create New Project</span>
           </button>
         )}
+
+        <div className="absolute right-0 top-0 w-72 h-72 bg-[#5470F4]/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
       </div>
 
       {/* Filter Tabs & Search Bar */}
@@ -207,7 +219,7 @@ function ProjectsContent() {
           ))}
         </div>
 
-        {/* Search & Status Filters */}
+        {/* Search & Status Filters & Quick Action */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -224,7 +236,7 @@ function ProjectsContent() {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full sm:w-auto bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-gray-300 outline-none transition-all"
+              className="flex-1 sm:flex-none bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-gray-300 outline-none transition-all"
             >
               {statuses.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -232,6 +244,18 @@ function ProjectsContent() {
                 </option>
               ))}
             </select>
+
+            {canManageProjects && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white flex items-center justify-center gap-1.5 shadow-md shadow-[#5470F4]/20 hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap"
+                title="Create New Project"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Project</span>
+                <span className="sm:hidden">New</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -250,7 +274,7 @@ function ProjectsContent() {
           {canManageProjects && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold gradient-btn text-white"
+              className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/25"
             >
               <Plus className="w-4 h-4" />
               <span>Create Project</span>

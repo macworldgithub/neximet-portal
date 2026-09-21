@@ -55,9 +55,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
-      <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden">
+      <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden min-w-0">
         <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pt-24 sm:pt-28 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pt-28 sm:pt-32 lg:pt-32 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>
