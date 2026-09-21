@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiPost } from '../../lib/api';
+import { apiGet, apiPost, apiDelete } from '../../lib/api';
 import EditProjectModal from '../../components/projects/EditProjectModal';
 import {
   FolderKanban,
@@ -21,6 +21,7 @@ import {
   AlertCircle,
   ExternalLink,
   Edit3,
+  Trash2,
   Code2,
   TrendingUp,
   Palette,
@@ -48,6 +49,8 @@ function ProjectsContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [deletingProject, setDeletingProject] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New project form state
   const [newProject, setNewProject] = useState<{
@@ -129,6 +132,25 @@ function ProjectsContent() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deletingProject) return;
+    setIsDeleting(true);
+    try {
+      const res = await apiDelete(`/projects/${deletingProject._id}`);
+      if (res.success) {
+        setDeletingProject(null);
+        fetchProjects();
+      } else {
+        alert(res.message || 'Failed to delete project');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Failed to delete project');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -371,14 +393,24 @@ function ProjectsContent() {
 
                   <div className="flex items-center gap-1.5">
                     {canManageProjects && (
-                      <button
-                        onClick={() => setEditingProject(proj)}
-                        className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-gray-300 hover:text-white transition-all flex items-center gap-1.5 border border-[#1F293D]"
-                        title="Edit Project Name & Details"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
-                        <span className="hidden sm:inline">Edit</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setEditingProject(proj)}
+                          className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#1E293D] text-gray-300 hover:text-white transition-all flex items-center gap-1.5 border border-[#1F293D]"
+                          title="Edit Project Name & Details"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                          <span className="hidden sm:inline">Edit</span>
+                        </button>
+                        <button
+                          onClick={() => setDeletingProject(proj)}
+                          className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-rose-500/20 text-gray-300 hover:text-rose-400 transition-all flex items-center gap-1.5 border border-[#1F293D] hover:border-rose-500/30"
+                          title="Delete Project"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="hidden sm:inline">Delete</span>
+                        </button>
+                      </>
                     )}
 
                     <Link
@@ -558,6 +590,54 @@ function ProjectsContent() {
             );
           }}
         />
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {deletingProject && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-rose-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-bold text-white">Delete Project</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Are you sure you want to permanently delete <span className="text-white font-semibold">{deletingProject.title}</span> ({deletingProject.code})?
+              </p>
+              <p className="text-[11px] text-rose-400/90 leading-relaxed">
+                This will delete all associated Jira tasks, scopes, credentials vault entries, and time tracking logs. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingProject(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-white bg-[#161F30] hover:bg-[#1E293D] transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteProject}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/25 transition-all flex items-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Permanently</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
