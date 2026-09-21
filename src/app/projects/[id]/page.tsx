@@ -11,6 +11,7 @@ import JiraRoadmap from '../../../components/jira/JiraRoadmap';
 import JiraIssueDetailModal from '../../../components/jira/JiraIssueDetailModal';
 import CreateIssueModal from '../../../components/jira/CreateIssueModal';
 import { JiraIssue } from '../../../components/jira/JiraIssueCard';
+import EditProjectModal from '../../../components/projects/EditProjectModal';
 import {
   FolderKanban,
   FileText,
@@ -28,6 +29,7 @@ import {
   Plus,
   Trash2,
   ExternalLink,
+  Edit3,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
@@ -44,9 +46,11 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, isSuperAdmin } = useAuth();
+  const canManageProjects = isSuperAdmin || hasRole('CEO', 'Super Admin', 'Project Manager', 'Team Manager');
 
   const [project, setProject] = useState<any>(null);
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);
   const [timeLogs, setTimeLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -446,6 +450,17 @@ export default function ProjectDetailPage() {
                 }`}>
                 {project.status.replace('_', ' ')}
               </span>
+
+              {canManageProjects && (
+                <button
+                  onClick={() => setShowEditProjectModal(true)}
+                  className="px-3 py-1 rounded-xl text-xs font-semibold bg-[#161F30] hover:bg-[#5470F4] text-gray-200 hover:text-white border border-[#1F293D] hover:border-[#5470F4] transition-all flex items-center gap-1.5 shadow-sm"
+                  title="Edit Project Name & Details"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                  <span>Edit Project</span>
+                </button>
+              )}
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -457,12 +472,12 @@ export default function ProjectDetailPage() {
           </div>
 
           {/* Quick Metrics Badge */}
-          <div className="flex items-center gap-6 bg-[#0B0F19] p-4 rounded-2xl border border-[#1F293D]">
+          <div className="flex items-center gap-4 sm:gap-6 bg-[#0B0F19] p-4 rounded-2xl border border-[#1F293D] self-start lg:self-auto">
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Completion</span>
-              <span className="text-2xl font-black text-white">{project.completionPercentage}%</span>
+              <span className="text-2xl font-black text-white">{project.completionPercentage || 0}%</span>
             </div>
-            <div className="border-l border-[#1F293D] pl-6">
+            <div className="border-l border-[#1F293D] pl-4 sm:pl-6">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Target Deadline</span>
               <span className="text-sm font-bold text-[#5CC5FA]">
                 {new Date(project.deadline).toLocaleDateString()}
@@ -1490,6 +1505,17 @@ export default function ProjectDetailPage() {
             setTasks((prev) => [newIssue, ...prev]);
           }}
           teamMembers={assignableMembers}
+        />
+      )}
+      {/* Edit Project Modal */}
+      {showEditProjectModal && (
+        <EditProjectModal
+          isOpen={showEditProjectModal}
+          project={project}
+          onClose={() => setShowEditProjectModal(false)}
+          onUpdated={(updated) => {
+            setProject((prev: any) => ({ ...prev, ...updated }));
+          }}
         />
       )}
     </div>
