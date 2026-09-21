@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
+import { apiGet } from '../../lib/api';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -27,7 +28,32 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
+  const [projectsCount, setProjectsCount] = useState<number | null>(null);
+  const [usersCount, setUsersCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchCounts = async () => {
+      try {
+        const [projRes, usersRes] = await Promise.all([
+          apiGet('/projects'),
+          apiGet('/auth/users'),
+        ]);
+        if (projRes.success) {
+          setProjectsCount(projRes.count ?? projRes.projects?.length ?? 0);
+        }
+        if (usersRes.success) {
+          setUsersCount(usersRes.count ?? usersRes.users?.length ?? 0);
+        }
+      } catch (err) {
+        console.error('Error fetching sidebar counts:', err);
+      }
+    };
+    fetchCounts();
+  }, [user]);
+
+  const isExecutive = isSuperAdmin || user?.role === 'CEO';
 
   const navItems = [
     {
@@ -40,7 +66,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       label: 'Projects & Scopes',
       href: '/projects',
       icon: FolderKanban,
-      badge: '5 Active',
+      badge:
+        projectsCount !== null
+          ? isExecutive
+            ? `${projectsCount} Total`
+            : `${projectsCount} Team`
+          : null,
     },
     {
       label: 'Attendance & Clock',
@@ -64,7 +95,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       label: 'Team Directory',
       href: '/employees',
       icon: Users,
-      badge: '10',
+      badge: usersCount !== null ? `${usersCount}` : null,
     },
   ];
 

@@ -40,6 +40,7 @@ import {
   ListFilter,
   Search,
   Filter,
+  X,
 } from 'lucide-react';
 
 export default function ProjectDetailPage() {
@@ -100,6 +101,20 @@ export default function ProjectDetailPage() {
   const [selectedUserToAssign, setSelectedUserToAssign] = useState('');
   const [roleInProject, setRoleInProject] = useState('Contributor');
   const [allocatedHours, setAllocatedHours] = useState(20);
+  const [editingMember, setEditingMember] = useState<{
+    user: any;
+    roleInProject: string;
+    allocatedHoursPerWeek: number;
+  } | null>(null);
+
+  // Edit Time log state
+  const [editingTimeLog, setEditingTimeLog] = useState<{
+    _id: string;
+    hours: number;
+    description: string;
+    billable: boolean;
+    date: string;
+  } | null>(null);
 
   const fetchProjectData = async () => {
     try {
@@ -382,6 +397,96 @@ export default function ProjectDetailPage() {
       if (res.success) {
         setShowAddMemberModal(false);
         setSelectedUserToAssign('');
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Update member allocation in project
+  const handleUpdateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+
+    const editUserId = editingMember.user?._id || editingMember.user;
+    const currentMembers = project.assignedMembers || [];
+    const updated = currentMembers.map((m: any) => {
+      const mUserId = m.user?._id || m.user;
+      if (mUserId === editUserId) {
+        return {
+          user: editUserId,
+          roleInProject: editingMember.roleInProject,
+          allocatedHoursPerWeek: Number(editingMember.allocatedHoursPerWeek),
+        };
+      }
+      return {
+        user: mUserId,
+        roleInProject: m.roleInProject,
+        allocatedHoursPerWeek: m.allocatedHoursPerWeek,
+      };
+    });
+
+    try {
+      const res = await apiPut(`/projects/${projectId}/resources`, { assignedMembers: updated });
+      if (res.success) {
+        setEditingMember(null);
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Remove member from project
+  const handleRemoveMember = async (userId: string, userName: string) => {
+    if (!confirm(`Are you sure you want to remove ${userName || 'this member'} from the project squad?`)) return;
+
+    const currentMembers = project.assignedMembers || [];
+    const updated = currentMembers
+      .filter((m: any) => (m.user?._id || m.user) !== userId)
+      .map((m: any) => ({
+        user: m.user?._id || m.user,
+        roleInProject: m.roleInProject,
+        allocatedHoursPerWeek: m.allocatedHoursPerWeek,
+      }));
+
+    try {
+      const res = await apiPut(`/projects/${projectId}/resources`, { assignedMembers: updated });
+      if (res.success) {
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Update time log
+  const handleUpdateTimeLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTimeLog) return;
+    try {
+      const res = await apiPut(`/tasks/timelogs/${editingTimeLog._id}`, {
+        hours: Number(editingTimeLog.hours),
+        description: editingTimeLog.description,
+        billable: editingTimeLog.billable,
+        date: editingTimeLog.date,
+      });
+      if (res.success) {
+        setEditingTimeLog(null);
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Delete time log
+  const handleDeleteTimeLog = async (logId: string) => {
+    if (!confirm('Are you sure you want to delete this work log entry?')) return;
+    try {
+      const res = await apiDelete(`/tasks/timelogs/${logId}`);
+      if (res.success) {
         fetchProjectData();
       }
     } catch (err) {
@@ -1238,27 +1343,56 @@ export default function ProjectDetailPage() {
                 return (
                   <div
                     key={u._id || i}
-                    className="p-5 rounded-2xl bg-[#161F30] border border-[#1F293D] space-y-3"
+                    className="p-5 rounded-2xl bg-[#161F30] border border-[#1F293D] flex flex-col justify-between gap-3 shadow-md group relative hover:border-[#5470F4]/40 transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-black text-sm text-[#5CC5FA] shadow-sm shrink-0">
-                        {u.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-black text-sm text-[#5CC5FA] shadow-sm shrink-0">
+                            {u.name ? u.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold text-white truncate">{u.name}</h4>
+                            <p className="text-[11px] text-[#5CC5FA] font-medium truncate">{member.roleInProject}</p>
+                          </div>
+                        </div>
+
+                        {canManageProjects && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() =>
+                                setEditingMember({
+                                  user: u,
+                                  roleInProject: member.roleInProject,
+                                  allocatedHoursPerWeek: member.allocatedHoursPerWeek || 20,
+                                })
+                              }
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1E293D] transition-colors"
+                              title="Edit Member Role & Hours"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveMember(u._id, u.name)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              title="Remove Member from Project"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">{u.name}</h4>
-                        <p className="text-[11px] text-[#5CC5FA] font-medium">{member.roleInProject}</p>
+
+                      <div className="border-t border-[#1F293D] pt-3 flex items-center justify-between text-xs">
+                        <span className="text-gray-400">Committed Workload</span>
+                        <span className="font-bold text-white bg-[#0B0F19] px-2.5 py-1 rounded-lg border border-[#1F293D]">
+                          {member.allocatedHoursPerWeek || 20} hrs/week
+                        </span>
                       </div>
                     </div>
 
-                    <div className="border-t border-[#1F293D] pt-3 flex items-center justify-between text-xs">
-                      <span className="text-gray-400">Committed Workload</span>
-                      <span className="font-bold text-white bg-[#0B0F19] px-2.5 py-1 rounded-lg border border-[#1F293D]">
-                        {member.allocatedHoursPerWeek || 20} hrs/week
-                      </span>
-                    </div>
-
-                    <div className="text-[10px] text-gray-500">
-                      <span>{u.department} • {u.designation}</span>
+                    <div className="text-[10px] text-gray-500 pt-1 border-t border-[#1F293D]/50 flex items-center justify-between">
+                      <span className="truncate">{u.department} • {u.designation}</span>
                     </div>
                   </div>
                 );
@@ -1387,29 +1521,64 @@ export default function ProjectDetailPage() {
             <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">Logged Work Activity</h4>
             <div className="space-y-3">
               {timeLogs && timeLogs.length > 0 ? (
-                timeLogs.map((log: any) => (
-                  <div
-                    key={log._id}
-                    className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] flex items-start justify-between gap-4"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shrink-0">
-                        {log.user?.name ? log.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
+                timeLogs.map((log: any) => {
+                  const currentUserId = (user as any)?._id || (user as any)?.id;
+                  const logUserId = log.user?._id || log.user;
+                  const canModifyLog = canManageProjects || logUserId === currentUserId;
+
+                  return (
+                    <div
+                      key={log._id}
+                      className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] flex items-start justify-between gap-4 group hover:border-[#5470F4]/30 transition-all"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shrink-0">
+                          {log.user?.name ? log.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
+                        </div>
+                        <div className="min-w-0">
+                          <h5 className="text-xs font-bold text-white truncate">{log.user?.name}</h5>
+                          <p className="text-xs text-gray-300 mt-1">{log.description}</p>
+                          <span className="text-[10px] text-gray-500 mt-1 block">
+                            {new Date(log.date).toLocaleDateString()} • {log.billable ? 'Billable' : 'Non-billable'}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="text-xs font-bold text-white">{log.user?.name}</h5>
-                        <p className="text-xs text-gray-300 mt-1">{log.description}</p>
-                        <span className="text-[10px] text-gray-500 mt-1 block">
-                          {new Date(log.date).toLocaleDateString()} • {log.billable ? 'Billable' : 'Non-billable'}
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-bold text-[#5CC5FA] bg-[#0B0F19] px-3 py-1.5 rounded-xl border border-[#1F293D]">
+                          {log.hours} hrs
                         </span>
+
+                        {canModifyLog && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                setEditingTimeLog({
+                                  _id: log._id,
+                                  hours: log.hours,
+                                  description: log.description,
+                                  billable: log.billable ?? true,
+                                  date: log.date ? new Date(log.date).toISOString().split('T')[0] : '',
+                                })
+                              }
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1E293D] transition-colors"
+                              title="Edit Time Log"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTimeLog(log._id)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              title="Delete Time Log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    <span className="text-xs font-bold text-[#5CC5FA] bg-[#0B0F19] px-3 py-1.5 rounded-xl border border-[#1F293D]">
-                      {log.hours} hrs
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-xs text-gray-400 py-6 text-center">No time logs recorded yet.</p>
               )}
@@ -1480,6 +1649,166 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Resource Allocation Modal */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
+                <span>Edit Squad Allocation</span>
+              </h3>
+              <button
+                onClick={() => setEditingMember(null)}
+                className="p-1 text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateMember} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Assigned Employee</label>
+                <div className="p-3 rounded-xl bg-[#0B0F19] border border-[#1F293D] text-xs text-white font-semibold flex items-center justify-between">
+                  <span>{editingMember.user?.name}</span>
+                  <span className="text-[10px] text-gray-400">{editingMember.user?.department}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Role in this Project</label>
+                <input
+                  type="text"
+                  required
+                  value={editingMember.roleInProject}
+                  onChange={(e) => setEditingMember({ ...editingMember, roleInProject: e.target.value })}
+                  placeholder="e.g. Lead Engineer, UI Designer, QA Specialist"
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2.5 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Allocated Hours per Week</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={80}
+                  value={editingMember.allocatedHoursPerWeek}
+                  onChange={(e) =>
+                    setEditingMember({ ...editingMember, allocatedHoursPerWeek: Number(e.target.value) })
+                  }
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2.5 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[#1F293D]">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Time Log Modal */}
+      {editingTimeLog && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
+                <span>Edit Work Hours Log</span>
+              </h3>
+              <button
+                onClick={() => setEditingTimeLog(null)}
+                className="p-1 text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateTimeLog} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Hours Spent</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="24"
+                  required
+                  value={editingTimeLog.hours}
+                  onChange={(e) => setEditingTimeLog({ ...editingTimeLog, hours: Number(e.target.value) })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={editingTimeLog.date}
+                  onChange={(e) => setEditingTimeLog({ ...editingTimeLog, date: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Work Description</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="What was completed during this block?"
+                  value={editingTimeLog.description}
+                  onChange={(e) => setEditingTimeLog({ ...editingTimeLog, description: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl p-3 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="edit-billable"
+                  checked={editingTimeLog.billable}
+                  onChange={(e) => setEditingTimeLog({ ...editingTimeLog, billable: e.target.checked })}
+                  className="rounded accent-[#5470F4]"
+                />
+                <label htmlFor="edit-billable" className="text-xs text-gray-300 font-semibold cursor-pointer">
+                  Mark as Billable Hours
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[#1F293D]">
+                <button
+                  type="button"
+                  onClick={() => setEditingTimeLog(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white"
+                >
+                  Save Log
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
