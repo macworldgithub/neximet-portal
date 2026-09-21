@@ -71,6 +71,16 @@ export default function ProjectDetailPage() {
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [showAddCredModal, setShowAddCredModal] = useState(false);
+  const [editingCred, setEditingCred] = useState<{
+    _id: string;
+    platform: string;
+    environment: string;
+    usernameOrEmail: string;
+    passwordOrKey: string;
+    endpointUrl: string;
+    notes: string;
+    visibleToRoles?: string[];
+  } | null>(null);
   const [newCred, setNewCred] = useState({
     platform: '',
     environment: 'Production',
@@ -247,7 +257,7 @@ export default function ProjectDetailPage() {
     return true;
   });
 
-  // Assignable members pool
+  // Assignable members pool (filtered to project's department)
   const assignableMembers = React.useMemo(() => {
     const list: any[] = [];
     if (project?.assignedMembers) {
@@ -258,7 +268,10 @@ export default function ProjectDetailPage() {
       });
     }
     allUsers.forEach((u: any) => {
-      if (!list.some((existing) => existing._id === u._id)) {
+      if (
+        (u.department === project?.department || u.department === 'Executive' || u.role === 'CEO') &&
+        !list.some((existing) => existing._id === u._id)
+      ) {
         list.push(u);
       }
     });
@@ -295,6 +308,29 @@ export default function ProjectDetailPage() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Update credential in vault
+  const handleUpdateCredential = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCred) return;
+    try {
+      const res = await apiPut(`/projects/${projectId}/credentials/${editingCred._id}`, {
+        platform: editingCred.platform,
+        environment: editingCred.environment,
+        usernameOrEmail: editingCred.usernameOrEmail,
+        passwordOrKey: editingCred.passwordOrKey,
+        endpointUrl: editingCred.endpointUrl,
+        notes: editingCred.notes,
+        visibleToRoles: editingCred.visibleToRoles,
+      });
+      if (res.success) {
+        setEditingCred(null);
+        fetchProjectData();
+      }
+    } catch (err) {
+      console.error('Failed to update credential:', err);
     }
   };
 
@@ -1041,14 +1077,34 @@ export default function ProjectDetailPage() {
                         </div>
                       </div>
 
-                      {hasRole('CEO', 'Project Manager') && (
-                        <button
-                          onClick={() => handleDeleteCredential(cred._id)}
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                          title="Delete credential"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {canManageProjects && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() =>
+                              setEditingCred({
+                                _id: cred._id,
+                                platform: cred.platform,
+                                environment: cred.environment || 'Production',
+                                usernameOrEmail: cred.usernameOrEmail || '',
+                                passwordOrKey: cred.passwordOrKey || '',
+                                endpointUrl: cred.endpointUrl || '',
+                                notes: cred.notes || '',
+                                visibleToRoles: cred.visibleToRoles || ['CEO', 'Project Manager', 'Team Manager', 'Team Member'],
+                              })
+                            }
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#1E293D] transition-colors"
+                            title="Edit credential"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCredential(cred._id)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Delete credential"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -1411,20 +1467,32 @@ export default function ProjectDetailPage() {
                 <h3 className="text-base font-bold text-white">Assign Member to Project</h3>
                 <form onSubmit={handleAddMember} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-1">Select Employee</label>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1">
+                      Select Employee ({project.department} Team)
+                    </label>
                     <select
                       required
                       value={selectedUserToAssign}
                       onChange={(e) => setSelectedUserToAssign(e.target.value)}
                       className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
                     >
-                      <option value="">-- Choose Member --</option>
-                      {allUsers.map((u) => (
-                        <option key={u._id} value={u._id}>
-                          {u.name} ({u.role} - {u.department})
-                        </option>
-                      ))}
+                      <option value="">-- Choose Member from {project.department} --</option>
+                      {allUsers
+                        .filter(
+                          (u) =>
+                            u.department === project.department ||
+                            u.department === 'Executive' ||
+                            u.role === 'CEO'
+                        )
+                        .map((u) => (
+                          <option key={u._id} value={u._id}>
+                            {u.name} ({u.designation} - {u.department})
+                          </option>
+                        ))}
                     </select>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Showing team members from <span className="text-[#5CC5FA] font-semibold">{project.department}</span>.
+                    </p>
                   </div>
 
                   <div>
@@ -1805,6 +1873,115 @@ export default function ProjectDetailPage() {
                   className="px-5 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white"
                 >
                   Save Log
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Credential Modal */}
+      {editingCred && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
+                <span>Edit Platform Credential</span>
+              </h3>
+              <button
+                onClick={() => setEditingCred(null)}
+                className="p-1 text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCredential} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Platform / Service</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. AWS Console, WordPress Admin, Stripe"
+                  value={editingCred.platform}
+                  onChange={(e) => setEditingCred({ ...editingCred, platform: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Environment</label>
+                <select
+                  value={editingCred.environment}
+                  onChange={(e) => setEditingCred({ ...editingCred, environment: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                >
+                  <option value="Production">Production</option>
+                  <option value="Staging">Staging</option>
+                  <option value="Development">Development</option>
+                  <option value="QA">QA</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Username / Access Key ID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. admin@company.com or AKIA..."
+                  value={editingCred.usernameOrEmail}
+                  onChange={(e) => setEditingCred({ ...editingCred, usernameOrEmail: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Password / Secret Key</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Paste sensitive password or secret token..."
+                  value={editingCred.passwordOrKey}
+                  onChange={(e) => setEditingCred({ ...editingCred, passwordOrKey: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-emerald-400 outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Endpoint / Login URL</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={editingCred.endpointUrl}
+                  onChange={(e) => setEditingCred({ ...editingCred, endpointUrl: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Notes / Instructions</label>
+                <textarea
+                  rows={2}
+                  placeholder="2FA recovery codes, IP whitelists..."
+                  value={editingCred.notes}
+                  onChange={(e) => setEditingCred({ ...editingCred, notes: e.target.value })}
+                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl p-2.5 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[#1F293D]">
+                <button
+                  type="button"
+                  onClick={() => setEditingCred(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
