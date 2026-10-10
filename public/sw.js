@@ -2,7 +2,11 @@ const CACHE_NAME = 'neximet-portal-v1';
 
 const STATIC_ASSETS = [
   '/',
+  '/login',
   '/dashboard',
+  '/attendance',
+  '/projects',
+  '/leaves',
   '/manifest.webmanifest',
   '/manifest.json',
   '/neximet-logo.avif',
