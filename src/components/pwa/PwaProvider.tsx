@@ -1,17 +1,12 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  Download,
-  Share2,
-  PlusSquare,
-  X,
-  Smartphone,
-  CheckCircle2,
-  WifiOff,
-  Sparkles,
-  ArrowRight,
-} from 'lucide-react';
+import React, { createContext, useContext, useState, useEffect, useSyncExternalStore } from 'react';
+import { X, WifiOff } from 'lucide-react';
+
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 
 interface PwaContextType {
   isInstallable: boolean;
@@ -35,92 +30,70 @@ const PwaContext = createContext<PwaContextType>({
 
 export const usePwa = () => useContext(PwaContext);
 
+const serverFalse = () => false;
+const subscribeDevice = () => () => {};
+const readIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const readStandalone = () => window.matchMedia('(display-mode: standalone)').matches ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+  document.referrer.startsWith('android-app://');
+const subscribeStandalone = (notify: () => void) => {
+  const media = window.matchMedia('(display-mode: standalone)');
+  media.addEventListener('change', notify);
+  return () => media.removeEventListener('change', notify);
+};
+const readOffline = () => !navigator.onLine;
+const subscribeConnectivity = (notify: () => void) => {
+  window.addEventListener('online', notify);
+  window.addEventListener('offline', notify);
+  return () => {
+    window.removeEventListener('online', notify);
+    window.removeEventListener('offline', notify);
+  };
+};
+
 export function PwaProvider({ children }: { children: React.ReactNode }) {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installedThisSession, setInstalledThisSession] = useState(false);
+  const isStandalone = useSyncExternalStore(subscribeStandalone, readStandalone, serverFalse);
+  const isIOS = useSyncExternalStore(subscribeDevice, readIOS, serverFalse);
+  const isOffline = useSyncExternalStore(subscribeConnectivity, readOffline, serverFalse);
+  const isInstalled = installedThisSession || isStandalone;
+  const isInstallable = !isInstalled && (isIOS || deferredPrompt !== null);
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // 1. Detect if running as installed standalone PWA
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    setIsInstalled(isStandalone);
-
-    // 2. Detect iOS / iPadOS
-    const ua = window.navigator.userAgent;
-    const isIOSDevice =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    setIsIOS(isIOSDevice);
-
-    if (isIOSDevice && !isStandalone) {
-      // iOS doesn't fire beforeinstallprompt, but can be added to home screen
-      setIsInstallable(true);
-    }
-
-    // 3. Listen for Chromium beforeinstallprompt event
+    // iOS uses the home-screen guide; Chromium supplies a single-use prompt.
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
+      setDeferredPrompt(e as InstallPromptEvent);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // 4. Listen for successful installation
     const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setIsInstallable(false);
+      setInstalledThisSession(true);
       setDeferredPrompt(null);
     };
 
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // 5. Online / Offline network listeners
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-
-    setIsOffline(!navigator.onLine);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // 6. Register Service Worker
-    if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'development') {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker
-          .register('/sw.js')
-          .then((reg) => {
-            console.log('[PWA] Service Worker registered successfully:', reg.scope);
-          })
-          .catch((err) => {
-            console.warn('[PWA] Service Worker registration failed:', err);
-          });
-      });
-    } else if ('serviceWorker' in navigator) {
-      // Also register in dev mode so testing works seamlessly
+    // Effects may run after window.load; register directly after hydration.
+    // Test the PWA with a production build to avoid caching development chunks.
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => {
-          console.log('[PWA-Dev] Service Worker registered:', reg.scope);
-        })
+        .register('/sw.js', { scope: '/', updateViaCache: 'none' })
         .catch((err) => {
-          console.warn('[PWA-Dev] SW registration notice:', err);
+          console.warn('[PWA] Service Worker registration failed:', err);
         });
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -134,15 +107,13 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
 
     if (deferredPrompt) {
       try {
-        deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
-        if (choice.outcome === 'accepted') {
-          setIsInstalled(true);
-          setIsInstallable(false);
-          setDeferredPrompt(null);
-        }
+        await deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        // appinstalled confirms installation; a prompt is single-use even if dismissed.
       } catch (err) {
         console.error('Error invoking PWA install prompt:', err);
+      } finally {
+        setDeferredPrompt(null);
       }
     } else {
       // Fallback instruction
@@ -166,16 +137,16 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
 
       {/* Offline Toast Banner */}
       {isOffline && (
-        <div className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-50 bg-rose-500/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2 border border-rose-400/30 animate-bounce">
+        <div role="status" className="fixed top-[calc(6rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-rose-500/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2 border border-rose-400/30">
           <WifiOff className="w-4 h-4 shrink-0" />
-          <span>You are currently offline. Running on cached telemetry.</span>
+          <span>You’re offline. Reconnect before submitting attendance, leave requests, or project changes.</span>
         </div>
       )}
 
       {/* iOS Installation Instruction Modal */}
       {showIOSGuide && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl space-y-5 animate-in slide-in-from-bottom duration-200">
+          <div role="dialog" aria-modal="true" aria-label="Install on iPhone or iPad" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-5 sm:p-7 max-w-md w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl space-y-5 animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <div className="flex items-center gap-2.5">
@@ -189,6 +160,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
               </div>
               <button
                 onClick={() => setShowIOSGuide(false)}
+                aria-label="Close installation instructions"
                 className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -214,9 +186,9 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
                   2
                 </div>
                 <div>
-                  <p className="font-semibold text-white">Select "Add to Home Screen"</p>
+                  <p className="font-semibold text-white">Select “Add to Home Screen”</p>
                   <p className="text-gray-400 text-[11px] mt-0.5">
-                    Scroll down through the options until you see <span className="text-[#5CC5FA] font-medium font-mono text-[10px]">"Add to Home Screen"</span>.
+                    Scroll down through the options until you see <span className="text-[#5CC5FA] font-medium font-mono text-[10px]">“Add to Home Screen”</span>.
                   </p>
                 </div>
               </div>
@@ -226,7 +198,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
                   3
                 </div>
                 <div>
-                  <p className="font-semibold text-white">Tap "Add" in Top-Right</p>
+                  <p className="font-semibold text-white">Tap “Add” in Top-Right</p>
                   <p className="text-gray-400 text-[11px] mt-0.5">
                     Confirm by tapping <span className="text-emerald-400 font-bold">Add</span>. The Neximet app icon will immediately appear on your home screen!
                   </p>
@@ -238,7 +210,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
               onClick={() => setShowIOSGuide(false)}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#5470F4] to-[#4355DE] text-white font-bold text-xs hover:shadow-lg hover:shadow-[#5470F4]/30 transition-all cursor-pointer"
             >
-              Got it, let's do it!
+              Got it, let’s do it!
             </button>
           </div>
         </div>

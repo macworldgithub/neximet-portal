@@ -124,12 +124,12 @@ export default function ProfileSettingsModal({ isOpen, onClose }: ProfileSetting
 
         {/* Read-Only Identity Card */}
         <div className="p-3.5 rounded-2xl bg-[#0B0F19] border border-[#1F293D] space-y-2.5 text-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shrink-0">
                 {user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <p className="font-bold text-white leading-tight">{user.name}</p>
                 <p className="text-[11px] text-gray-400 font-mono">{user.email}</p>
               </div>

@@ -130,7 +130,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
       {/* Sidebar Container */}
       <aside
-        className={`w-72 bg-[#0B0F19] border-r border-[#1F293D] flex flex-col h-screen fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
+        className={`portal-sidebar w-72 bg-[#0B0F19] border-r border-[#1F293D] flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
           mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -274,7 +274,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                 </div>
                 <div className="flex-1 text-left min-w-0">
                   <p className="font-bold text-white text-xs leading-tight">Install App</p>
-                  <p className="text-[10px] text-[#5CC5FA] font-medium truncate">Offline & Native PWA</p>
+                  <p className="text-[10px] text-[#5CC5FA] font-medium truncate">Quick home-screen access</p>
                 </div>
               </button>
             </div>

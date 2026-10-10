@@ -1,34 +1,38 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { usePwa } from './PwaProvider';
-import { Download, Smartphone, X, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Download, X, Sparkles } from 'lucide-react';
+
+const subscribeStorage = (notify: () => void) => {
+  window.addEventListener('storage', notify);
+  return () => window.removeEventListener('storage', notify);
+};
+const readDismissed = () => {
+  try { return !!sessionStorage.getItem('neximet_pwa_banner_dismissed'); }
+  catch { return false; }
+};
+const serverDismissed = () => true;
 
 export default function PwaInstallBanner() {
   const { isInstallable, isInstalled, promptInstall } = usePwa();
-  const [dismissed, setDismissed] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
+  const savedDismissal = useSyncExternalStore(subscribeStorage, readDismissed, serverDismissed);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isDismissed = sessionStorage.getItem('neximet_pwa_banner_dismissed');
-      setDismissed(!!isDismissed);
-    }
-  }, []);
-
-  if (isInstalled || !isInstallable || dismissed) {
+  if (isInstalled || !isInstallable || dismissed || savedDismissal) {
     return null;
   }
 
   const handleDismiss = () => {
     setDismissed(true);
-    if (typeof window !== 'undefined') {
+    try {
       sessionStorage.setItem('neximet_pwa_banner_dismissed', 'true');
-    }
+    } catch { /* Dismissal still works when browser storage is restricted. */ }
   };
 
   return (
-    <div className="fixed bottom-20 sm:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-40 animate-in slide-in-from-bottom-5 duration-300">
-      <div className="bg-[#111827]/95 backdrop-blur-xl border border-[#5470F4]/40 rounded-3xl p-4 sm:p-5 shadow-2xl shadow-black/80 flex items-center justify-between gap-3.5 relative overflow-hidden">
+    <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-40 animate-in slide-in-from-bottom-5 duration-300">
+      <div className="bg-[#111827]/95 backdrop-blur-xl border border-[#5470F4]/40 rounded-3xl p-4 sm:p-5 shadow-2xl shadow-black/80 flex flex-wrap items-center justify-between gap-3.5 relative overflow-hidden">
         {/* Ambient background glow */}
         <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#5470F4]/20 blur-2xl pointer-events-none" />
 
@@ -51,8 +55,8 @@ export default function PwaInstallBanner() {
                 PWA
               </span>
             </div>
-            <p className="text-[11px] text-gray-400 truncate mt-0.5">
-              Instant mobile clocking, facial selfie & offline sync
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Quick home-screen access. Submissions require internet.
             </p>
           </div>
         </div>

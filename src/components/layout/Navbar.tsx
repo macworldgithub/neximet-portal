@@ -160,7 +160,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
   return (
     <>
-      <header className="h-20 bg-[#0B0F19]/90 backdrop-blur-md border-b border-[#1F293D] fixed top-0 left-0 lg:left-72 right-0 z-30 px-3.5 sm:px-6 lg:px-8 flex items-center justify-between">
+      <header className="portal-header bg-[#0B0F19]/90 backdrop-blur-md border-b border-[#1F293D] fixed top-0 left-0 lg:left-72 right-0 z-30 flex items-center justify-between">
         {/* Left: Mobile Toggle & Real-time clock & shift info */}
         <div className="flex items-center gap-2.5 sm:gap-6">
           {/* Mobile Drawer Trigger */}

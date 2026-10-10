@@ -124,7 +124,7 @@ export default function ForgotPasswordModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-md shadow-2xl shadow-black/90 overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-label="Reset account access" className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl shadow-black/90">
         {/* Header */}
         <div className="px-6 py-5 border-b border-[#1F293D] flex items-center justify-between bg-[#0E1424]">
           <div className="flex items-center gap-3">
@@ -138,6 +138,7 @@ export default function ForgotPasswordModal({
           </div>
           <button
             onClick={handleClose}
+            aria-label="Close account recovery"
             className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
           >
             <X className="w-5 h-5" />

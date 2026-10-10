@@ -707,7 +707,7 @@ export default function ProjectDetailPage() {
           {/* Sub-view switcher & Global Jira filters bar */}
           <div className="bg-[#111827] border border-[#1F293D] p-4 sm:p-5 rounded-3xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             {/* View Mode Buttons */}
-            <div className="flex items-center gap-1.5 p-1 bg-[#0B0F19] rounded-2xl border border-[#1F293D]">
+            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#0B0F19] rounded-2xl border border-[#1F293D]">
               <button
                 onClick={() => setJiraSubView('board')}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${

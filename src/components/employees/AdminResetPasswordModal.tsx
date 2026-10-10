@@ -101,7 +101,7 @@ export default function AdminResetPasswordModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-lg shadow-2xl shadow-black/80 overflow-hidden">
+      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl shadow-black/80">
         {/* Header */}
         <div className="px-6 py-5 border-b border-[#1F293D] flex items-center justify-between bg-[#0E1424]">
           <div className="flex items-center gap-3">
