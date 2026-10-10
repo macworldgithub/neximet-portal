@@ -18,10 +18,15 @@ import {
   MapPin,
   LocateFixed,
   Navigation,
+  Eye,
+  Lock,
 } from 'lucide-react';
 
 export default function DeductionSettingsPage() {
   const { user, hasRole } = useAuth();
+  const isCeo = hasRole('CEO');
+  const canViewLedger = hasRole('CEO', 'Project Manager');
+
   const [rule, setRule] = useState<any>({
     title: 'Neximet Enterprise Attendance & Late Deduction Policy',
     shiftStartTime: '09:00',
@@ -53,7 +58,7 @@ export default function DeductionSettingsPage() {
 
   // Simulator state
   const [testMinutesLate, setTestMinutesLate] = useState(35);
-  const [testDailyWage, setTestDailyWage] = useState(4667);
+  const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage || 4667);
   const [simulationResult, setSimulationResult] = useState<any>(null);
 
   // Monthly report state
@@ -67,9 +72,15 @@ export default function DeductionSettingsPage() {
         setRule(res.rule);
       }
 
-      const reportRes = await apiGet('/deductions/monthly-report');
-      if (reportRes.success) {
-        setMonthlyReport(reportRes);
+      if (canViewLedger) {
+        try {
+          const reportRes = await apiGet('/deductions/monthly-report');
+          if (reportRes.success) {
+            setMonthlyReport(reportRes);
+          }
+        } catch {
+          // Non-executives don't have access to global company ledger
+        }
       }
     } catch (err) {
       console.error(err);
@@ -165,21 +176,6 @@ export default function DeductionSettingsPage() {
     }
   };
 
-  if (!hasRole('CEO')) {
-    return (
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-12 text-center max-w-xl mx-auto my-12 space-y-4 shadow-xl">
-        <ShieldCheck className="w-12 h-12 text-amber-400 mx-auto" />
-        <h3 className="text-lg font-bold text-white">CEO / Executive Access Required</h3>
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Company salary deduction rules and financial penalty thresholds can only be modified by the Chief Executive Officer.
-        </p>
-        <p className="text-xs text-[#5CC5FA] font-semibold">
-          Please sign in with executive credentials (e.g. <strong>ceo@neximet.com</strong>) to configure company deduction policies.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       {/* Title */}
@@ -187,18 +183,39 @@ export default function DeductionSettingsPage() {
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
             <Coins className="w-6 h-6 text-[#5470F4]" />
-            <span>Configurable Salary Deduction Engine</span>
+            <span>Company Attendance & Deduction Rules</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Configure automated late penalties, grace periods, percentage/fixed deduction models, and review monthly ledgers.
+            Official automated late penalties, grace periods, percentage/fixed deduction models, and office geofence policy.
           </p>
         </div>
 
-        <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4" />
-          <span>Executive Authority Granted</span>
-        </span>
+        {isCeo ? (
+          <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Executive Authority (CEO Edit Access)</span>
+          </span>
+        ) : (
+          <span className="px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-2">
+            <Eye className="w-4 h-4" />
+            <span>View-Only Mode • Rules Set by CEO</span>
+          </span>
+        )}
       </div>
+
+      {!isCeo && (
+        <div className="p-4 rounded-2xl bg-[#161F30]/80 border border-[#5470F4]/30 text-xs flex items-center gap-3.5 shadow-lg">
+          <div className="p-2 rounded-xl bg-[#5470F4]/10 border border-[#5470F4]/20 text-[#5CC5FA] shrink-0">
+            <Eye className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-bold text-white text-xs">Official Company Deduction Policy</h4>
+            <p className="text-[11px] text-gray-300 mt-0.5 leading-relaxed">
+              These deduction rates, grace periods, and thresholds are configured and enforced by the Chief Executive Officer. All employees have access to view these active rules and use the <strong>What-If Simulator</strong> to inspect penalty calculations.
+            </p>
+          </div>
+        </div>
+      )}
 
       {msg && (
         <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 ${msg.type === 'success'
@@ -220,11 +237,14 @@ export default function DeductionSettingsPage() {
               <span>Company Deduction Rules & Thresholds</span>
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              Customize when late marks trigger and how money is deducted from daily wages.
+              {isCeo
+                ? 'Customize when late marks trigger and how money is deducted from daily wages.'
+                : 'Current thresholds and salary penalty formulas configured for the organization.'}
             </p>
           </div>
 
           <form onSubmit={handleSaveRule} className="space-y-5">
+            <fieldset disabled={!isCeo} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Standard Shift Start Time</label>
@@ -561,17 +581,35 @@ export default function DeductionSettingsPage() {
                 </div>
               </div>
             </div>
+          </fieldset>
 
-            <div className="flex justify-end pt-4 border-t border-[#1F293D]">
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 hover:scale-[1.02] transition-all"
-              >
-                {saving ? 'Saving Rules...' : 'Save Configuration Policy'}
-              </button>
-            </div>
-          </form>
+          <div className="flex items-center justify-between pt-4 border-t border-[#1F293D]">
+            {isCeo ? (
+              <>
+                <p className="text-[11px] text-gray-400">
+                  Changes apply immediately to all automated attendance and salary deductions.
+                </p>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 hover:scale-[1.02] transition-all"
+                >
+                  {saving ? 'Saving Rules...' : 'Save Configuration Policy'}
+                </button>
+              </>
+            ) : (
+              <div className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
+                <div className="flex items-center gap-2 text-xs text-gray-300">
+                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Deduction rules are set exclusively by the Chief Executive Officer (CEO).</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                  Enforced by CEO
+                </span>
+              </div>
+            )}
+          </div>
+        </form>
         </div>
 
         {/* Live Deduction What-If Simulator */}
@@ -652,87 +690,89 @@ export default function DeductionSettingsPage() {
       </div>
 
       {/* Monthly Deductions Report & Penalty Audit Ledger */}
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1F293D] pb-4">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-[#5470F4]" />
-              <span>Monthly Deductions Ledger & Penalty Audit</span>
-            </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Detailed breakdown of salary deductions accrued per team member for the active billing cycle.
-            </p>
-          </div>
+      {canViewLedger && (
+        <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1F293D] pb-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-[#5470F4]" />
+                <span>Monthly Deductions Ledger & Penalty Audit</span>
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Detailed breakdown of salary deductions accrued per team member for the active billing cycle.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <span className="text-[10px] text-gray-400 font-bold uppercase block">Total Penalties</span>
-              <span className="text-lg font-black text-rose-400 font-mono">
-                -PKR {monthlyReport?.grandTotalDeductions?.toLocaleString() || '0'}
-              </span>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <span className="text-[10px] text-gray-400 font-bold uppercase block">Total Penalties</span>
+                <span className="text-lg font-black text-rose-400 font-mono">
+                  -PKR {monthlyReport?.grandTotalDeductions?.toLocaleString() || '0'}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
-              <tr>
-                <th className="py-3 px-4">Employee</th>
-                <th className="py-3 px-4">Department</th>
-                <th className="py-3 px-4">Late Incidents</th>
-                <th className="py-3 px-4">Total Delay</th>
-                <th className="py-3 px-4">Total Money Deducted</th>
-                <th className="py-3 px-4">Recent Infraction Detail</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1F293D]">
-              {monthlyReport?.report && monthlyReport.report.length > 0 ? (
-                monthlyReport.report.map((item: any) => (
-                  <tr key={item.user?._id} className="hover:bg-[#161F30]/60 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center font-bold text-[11px] text-[#5CC5FA] shrink-0">
-                          {item.user?.name ? item.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-gray-400 uppercase tracking-wider font-bold border-b border-[#1F293D] bg-[#0B0F19]">
+                <tr>
+                  <th className="py-3 px-4">Employee</th>
+                  <th className="py-3 px-4">Department</th>
+                  <th className="py-3 px-4">Late Incidents</th>
+                  <th className="py-3 px-4">Total Delay</th>
+                  <th className="py-3 px-4">Total Money Deducted</th>
+                  <th className="py-3 px-4">Recent Infraction Detail</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y border-[#1F293D] divide-[#1F293D]">
+                {monthlyReport?.report && monthlyReport.report.length > 0 ? (
+                  monthlyReport.report.map((item: any) => (
+                    <tr key={item.user?._id} className="hover:bg-[#161F30]/60 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center font-bold text-[11px] text-[#5CC5FA] shrink-0">
+                            {item.user?.name ? item.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
+                          </div>
+                          <div>
+                            <p className="font-bold text-white">{item.user?.name}</p>
+                            <p className="text-[10px] text-gray-400">{item.user?.designation}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-white">{item.user?.name}</p>
-                          <p className="text-[10px] text-gray-400">{item.user?.designation}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-300">{item.user?.department}</td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold">
-                        {item.totalLateIncidents} times
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-300 font-mono font-bold">
-                      {item.totalMinutesLate} mins
-                    </td>
-                    <td className="py-3.5 px-4 font-mono">
-                      <span className="text-rose-400 font-black text-sm">
-                        -PKR {item.totalDeductions}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-400 max-w-xs truncate">
-                      {item.incidents && item.incidents.length > 0
-                        ? item.incidents[item.incidents.length - 1].reason
-                        : 'Rule penalty'}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-300">{item.user?.department}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                          {item.totalLateIncidents} times
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-300 font-mono font-bold">
+                        {item.totalMinutesLate} mins
+                      </td>
+                      <td className="py-3.5 px-4 font-mono">
+                        <span className="text-rose-400 font-black text-sm">
+                          -PKR {item.totalDeductions}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-400 max-w-xs truncate">
+                        {item.incidents && item.incidents.length > 0
+                          ? item.incidents[item.incidents.length - 1].reason
+                          : 'Rule penalty'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-gray-500">
+                      No deductions accrued for this month. All employees arrived on time!
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-500">
-                    No deductions accrued for this month. All employees arrived on time!
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

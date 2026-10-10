@@ -19,7 +19,9 @@ import {
   ShieldCheck,
   Building2,
   X,
+  Settings,
 } from 'lucide-react';
+import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -31,6 +33,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const { user, isSuperAdmin } = useAuth();
   const [projectsCount, setProjectsCount] = useState<number | null>(null);
   const [usersCount, setUsersCount] = useState<number | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -254,6 +257,37 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           </div>
         </div>
 
+        {/* User Profile & Security Quick Bar */}
+        {user && (
+          <div className="p-3 border-t border-[#1F293D] bg-[#0B0F19]/80">
+            <button
+              onClick={() => {
+                setProfileModalOpen(true);
+                if (onCloseMobile) onCloseMobile();
+              }}
+              className="w-full flex items-center justify-between p-2 rounded-xl bg-[#111827] hover:bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 transition-all text-left group cursor-pointer"
+              title="Edit My Phone & Password"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shrink-0 group-hover:scale-105 transition-transform">
+                  {user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+                </div>
+                <div className="truncate">
+                  <p className="text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors truncate">
+                    {user.name}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-mono truncate">
+                    {user.phone || 'Set Phone Number'}
+                  </p>
+                </div>
+              </div>
+              <span className="p-1 rounded-lg text-gray-400 group-hover:text-white transition-colors shrink-0">
+                <Settings className="w-3.5 h-3.5" />
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="p-4 border-t border-[#1F293D] bg-[#0E1424]">
           <div className="flex items-center justify-between">
@@ -269,6 +303,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           <p className="text-[10px] text-gray-600 mt-2 text-center">© 2026 Neximet Inc. All Rights Reserved.</p>
         </div>
       </aside>
+
+      {/* Profile & Security Modal */}
+      <ProfileSettingsModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
     </>
   );
 }

@@ -30,6 +30,7 @@ import {
   Check,
   Radio,
   Lock,
+  UserX,
 } from 'lucide-react';
 
 export default function AttendancePage() {
@@ -58,6 +59,7 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<'self' | 'roster'>('self');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [markingAbsentId, setMarkingAbsentId] = useState<string | null>(null);
 
   // CEO Simulation & Testing Sandbox State (Only accessible to CEO)
   const [simulatedHour, setSimulatedHour] = useState('now');
@@ -421,22 +423,45 @@ export default function AttendancePage() {
     }
   };
 
-  // Handle Check-Out
-  const handleCheckOut = async () => {
-    setActionLoading(true);
+  // CEO / Admin Mark Employee Absent (revert attendance)
+  const handleMarkAbsent = async (targetUserId: string, userName?: string) => {
+    if (!confirm(`Are you sure you want to mark ${userName || 'this employee'} absent for today? This will cancel their present status and record daily absent deduction.`)) {
+      return;
+    }
+
+    setMarkingAbsentId(targetUserId);
     setMsg(null);
     try {
-      const res = await apiPost('/attendance/check-out');
+      const res = await apiPost('/attendance/mark-absent', { userId: targetUserId });
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || 'Check-out recorded successfully' });
-        fetchAttendanceData();
+        setMsg({ type: 'success', text: res.message || `${userName || 'Employee'} marked absent successfully.` });
+        await fetchAttendanceData();
       } else {
-        setMsg({ type: 'error', text: res.message || 'Check-out failed' });
+        setMsg({ type: 'error', text: res.message || 'Failed to mark employee absent' });
       }
     } catch (err: any) {
-      setMsg({ type: 'error', text: err?.message || 'Check-out error occurred' });
+      setMsg({ type: 'error', text: err?.message || 'Error occurred while marking employee absent' });
     } finally {
-      setActionLoading(false);
+      setMarkingAbsentId(null);
+    }
+  };
+
+  // CEO / Admin Re-mark Employee Present
+  const handleMarkPresent = async (targetUserId: string, userName?: string) => {
+    setMarkingAbsentId(targetUserId);
+    setMsg(null);
+    try {
+      const res = await apiPost('/attendance/mark-present', { userId: targetUserId });
+      if (res.success) {
+        setMsg({ type: 'success', text: res.message || `${userName || 'Employee'} marked present successfully.` });
+        await fetchAttendanceData();
+      } else {
+        setMsg({ type: 'error', text: res.message || 'Failed to mark employee present' });
+      }
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err?.message || 'Error occurred while marking employee present' });
+    } finally {
+      setMarkingAbsentId(null);
     }
   };
 
@@ -515,7 +540,12 @@ export default function AttendancePage() {
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
                   <div className="flex items-center gap-2 mt-1">
-                    {todayAttendance?.checkIn ? (
+                    {todayAttendance?.status === 'absent' ? (
+                      <span className="text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Marked Absent</span>
+                      </span>
+                    ) : todayAttendance?.checkIn ? (
                       <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${todayAttendance.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           : todayAttendance.status === 'half_day'
@@ -568,11 +598,9 @@ export default function AttendancePage() {
                 </div>
 
                 <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
-                  <span className="text-gray-400 text-[10px] block font-semibold">Check-Out</span>
-                  <span className="font-bold text-white text-sm">
-                    {todayAttendance?.checkOut
-                      ? new Date(todayAttendance.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : '--:--'}
+                  <span className="text-gray-400 text-[10px] block font-semibold">Office Shift End</span>
+                  <span className="font-bold text-[#5CC5FA] text-sm">
+                    06:00 PM (Closing)
                   </span>
                 </div>
               </div>
@@ -778,18 +806,29 @@ export default function AttendancePage() {
                     <Camera className="w-4 h-4" />
                     <span>{actionLoading ? 'Verifying & Clocking In...' : 'Verify Selfie & Clock-In'}</span>
                   </button>
-                ) : !todayAttendance?.checkOut ? (
-                  <button
-                    onClick={handleCheckOut}
-                    disabled={actionLoading}
-                    className="w-full py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{actionLoading ? 'Recording...' : 'Mark Check-Out Now'}</span>
-                  </button>
                 ) : (
-                  <div className="p-3 text-center bg-[#0B0F19] rounded-xl border border-[#1F293D] text-xs font-semibold text-emerald-400">
-                    ✓ Completed shifts for today ({todayAttendance.totalWorkHours} hrs recorded)
+                  <div className="space-y-2">
+                    <div className="p-3 text-center bg-[#0B0F19] rounded-xl border border-emerald-500/30 text-xs font-semibold text-emerald-400 space-y-1">
+                      <div className="flex items-center justify-center gap-1.5 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Present & Clocked In for Today</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 font-normal">
+                        Shift concludes automatically at standard 06:00 PM office closing time. No check-out required.
+                      </p>
+                    </div>
+
+                    {isCEO && (
+                      <button
+                        onClick={() => handleMarkAbsent(user?.id || (user as any)?._id, 'Yourself')}
+                        disabled={markingAbsentId === (user?.id || (user as any)?._id)}
+                        className="w-full py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                        title="CEO override: mark absent"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                        <span>{markingAbsentId === (user?.id || (user as any)?._id) ? 'Updating...' : 'Mark Absent Again (CEO Override)'}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -881,7 +920,7 @@ export default function AttendancePage() {
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Selfie Snapshot</th>
                   <th className="py-3 px-4">Check-In</th>
-                  <th className="py-3 px-4">Check-Out</th>
+                  <th className="py-3 px-4">Shift End</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Late Delay</th>
                   <th className="py-3 px-4">Deduction</th>
@@ -916,8 +955,8 @@ export default function AttendancePage() {
                       <td className="py-3.5 px-4 text-white">
                         {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
                       </td>
-                      <td className="py-3.5 px-4 text-white">
-                        {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
+                      <td className="py-3.5 px-4 text-gray-400 font-mono">
+                        06:00 PM
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${record.status === 'present'
@@ -972,6 +1011,7 @@ export default function AttendancePage() {
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Late Mins</th>
                   <th className="py-3 px-4">Deduction</th>
+                  <th className="py-3 px-4 text-right">CEO Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1F293D]">
@@ -1043,7 +1083,9 @@ export default function AttendancePage() {
                             ? 'bg-rose-500/20 text-rose-300'
                             : item.status === 'late'
                               ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-gray-500/20 text-gray-400'
+                              : item.status === 'absent'
+                                ? 'bg-rose-500/20 text-rose-400'
+                                : 'bg-gray-500/20 text-gray-400'
                         }`}>
                         {item.status.replace('_', ' ')}
                       </span>
@@ -1056,6 +1098,39 @@ export default function AttendancePage() {
                         <span className="text-rose-400 font-bold">-PKR {item.deductionAmount}</span>
                       ) : (
                         <span className="text-gray-500">PKR 0</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      {isCEO ? (
+                        item.checkedIn || ['present', 'late', 'half_day'].includes(item.status) ? (
+                          <button
+                            onClick={() => handleMarkAbsent(item.user._id, item.user.name)}
+                            disabled={markingAbsentId === item.user._id}
+                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                            title="Mark this employee absent for today"
+                          >
+                            <UserX className="w-3.5 h-3.5 text-rose-400" />
+                            <span>{markingAbsentId === item.user._id ? 'Updating...' : 'Mark Absent'}</span>
+                          </button>
+                        ) : item.status === 'absent' ? (
+                          <div className="inline-flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-lg border border-rose-500/30">
+                              Marked Absent
+                            </span>
+                            <button
+                              onClick={() => handleMarkPresent(item.user._id, item.user.name)}
+                              disabled={markingAbsentId === item.user._id}
+                              className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
+                              title="Revert back to present"
+                            >
+                              Revert
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-500 font-mono text-[10px]">--</span>
+                        )
+                      ) : (
+                        <span className="text-gray-500 font-mono text-[10px]">--</span>
                       )}
                     </td>
                   </tr>

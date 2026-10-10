@@ -24,6 +24,7 @@ import {
   Menu,
 } from 'lucide-react';
 import AdminResetPasswordModal from '../employees/AdminResetPasswordModal';
+import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -34,6 +35,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const [timeStr, setTimeStr] = useState('');
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [clockActionLoading, setClockActionLoading] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Consolidated Admin Notifications State
   const [notificationsData, setNotificationsData] = useState<any>({
@@ -110,11 +112,6 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
     try {
       if (!todayAttendance || !todayAttendance.checkIn) {
         const res = await apiPost('/attendance/check-in');
-        if (res.success) {
-          setTodayAttendance(res.attendance);
-        }
-      } else if (!todayAttendance.checkOut) {
-        const res = await apiPost('/attendance/check-out');
         if (res.success) {
           setTodayAttendance(res.attendance);
         }
@@ -467,7 +464,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
           )}
 
           {user && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <span
                 className={`text-[11px] px-3 py-1 rounded-full font-bold inline-flex items-center gap-1.5 border ${
                   user.role === 'CEO'
@@ -485,19 +482,29 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                 <span>{user.role}</span>
               </span>
 
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-white leading-tight">{user.name}</p>
-                <p className="text-[10px] text-gray-400">{user.email}</p>
-              </div>
+              <button
+                onClick={() => setProfileModalOpen(true)}
+                className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-2xl bg-[#111827] hover:bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 transition-all text-left group cursor-pointer"
+                title="Edit Phone & Password"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors leading-tight">
+                    {user.name}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-mono">
+                    {user.phone || 'Set Phone'}
+                  </p>
+                </div>
 
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shadow-sm">
-                {user.name
-                  .split(' ')
-                  .map((n: string) => n[0])
-                  .join('')
-                  .substring(0, 2)
-                  .toUpperCase()}
-              </div>
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shadow-sm group-hover:scale-105 transition-transform">
+                  {user.name
+                    .split(' ')
+                    .map((n: string) => n[0])
+                    .join('')
+                    .substring(0, 2)
+                    .toUpperCase()}
+                </div>
+              </button>
             </div>
           )}
 
@@ -523,6 +530,12 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
           }}
         />
       )}
+
+      {/* Self Profile & Password Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
     </>
   );
 }
