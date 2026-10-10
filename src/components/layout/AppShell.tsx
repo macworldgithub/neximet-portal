@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
+import MobileBottomNav from './MobileBottomNav';
+import PwaInstallBanner from '../pwa/PwaInstallBanner';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,7 +27,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [user, loading, isLoginPage, router]);
 
   if (isLoginPage) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <PwaInstallBanner />
+      </>
+    );
   }
 
   if (loading) {
@@ -57,10 +64,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       />
       <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden min-w-0">
         <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pt-28 sm:pt-32 lg:pt-32 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pt-24 sm:pt-28 lg:pt-28 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>
+      <MobileBottomNav
+        mobileMenuOpen={mobileMenuOpen}
+        onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+      />
+      <PwaInstallBanner />
     </div>
   );
 }

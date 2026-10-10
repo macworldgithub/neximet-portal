@@ -20,8 +20,10 @@ import {
   Building2,
   X,
   Settings,
+  Download,
 } from 'lucide-react';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
+import { usePwa } from '../pwa/PwaProvider';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -31,6 +33,7 @@ interface SidebarProps {
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const { user, isSuperAdmin } = useAuth();
+  const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [projectsCount, setProjectsCount] = useState<number | null>(null);
   const [usersCount, setUsersCount] = useState<number | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -255,6 +258,27 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               })}
             </div>
           </div>
+
+          {/* PWA Install Action */}
+          {isInstallable && !isInstalled && (
+            <div className="px-3 pt-2">
+              <button
+                onClick={() => {
+                  promptInstall();
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-gradient-to-r from-[#5470F4]/20 via-[#5CC5FA]/15 to-transparent border border-[#5470F4]/40 hover:border-[#5470F4] text-white text-xs font-semibold transition-all group cursor-pointer shadow-lg shadow-[#5470F4]/10 hover:shadow-[#5470F4]/20"
+              >
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#5470F4] to-[#5CC5FA] flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="font-bold text-white text-xs leading-tight">Install App</p>
+                  <p className="text-[10px] text-[#5CC5FA] font-medium truncate">Offline & Native PWA</p>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* User Profile & Security Quick Bar */}

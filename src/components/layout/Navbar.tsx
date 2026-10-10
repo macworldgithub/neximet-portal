@@ -22,9 +22,11 @@ import {
   ExternalLink,
   AlertTriangle,
   Menu,
+  Download,
 } from 'lucide-react';
 import AdminResetPasswordModal from '../employees/AdminResetPasswordModal';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
+import { usePwa } from '../pwa/PwaProvider';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -32,6 +34,7 @@ interface NavbarProps {
 
 export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const { user, isSuperAdmin, logout } = useAuth();
+  const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [timeStr, setTimeStr] = useState('');
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [clockActionLoading, setClockActionLoading] = useState(false);
@@ -463,10 +466,22 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
             </div>
           )}
 
+          {/* PWA Install Button (Desktop & Tablet) */}
+          {isInstallable && !isInstalled && (
+            <button
+              onClick={promptInstall}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#5470F4]/20 to-[#5CC5FA]/15 text-[#5CC5FA] hover:text-white border border-[#5470F4]/30 hover:border-[#5470F4] transition-all text-xs font-semibold cursor-pointer shadow-sm hover:scale-[1.02]"
+              title="Install Neximet Progressive Web App"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install App</span>
+            </button>
+          )}
+
           {user && (
             <div className="flex items-center gap-2 sm:gap-3">
               <span
-                className={`text-[11px] px-3 py-1 rounded-full font-bold inline-flex items-center gap-1.5 border ${
+                className={`text-[11px] px-3 py-1 rounded-full font-bold hidden lg:inline-flex items-center gap-1.5 border ${
                   user.role === 'CEO'
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                     : user.role === 'Super Admin'

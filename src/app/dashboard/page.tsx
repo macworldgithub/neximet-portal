@@ -171,7 +171,7 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-3">
           <Link
-            href="/jira"
+            href="/projects"
             className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#1F293D] hover:bg-[#2A374F] text-white border border-[#2A374F] flex items-center gap-2 transition-all shadow-sm"
           >
             <ListTodo className="w-4 h-4 text-[#5CC5FA]" />
@@ -527,7 +527,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <Link
-                href="/jira"
+                href="/projects"
                 className="text-xs text-[#5CC5FA] font-bold hover:underline flex items-center gap-1"
               >
                 <span>Full Jira Board</span>
