@@ -66,7 +66,7 @@ export async function apiFetch<T = any>(
 
     return json;
   } catch (err: any) {
-    console.error('API Error:', err);
+    if (!options.signal?.aborted) console.error('API Error:', err);
     return {
       success: false,
       message: err.message || 'Network error occurred',

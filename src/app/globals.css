@@ -65,6 +65,14 @@ body {
   padding-left: var(--safe-left);
 }
 
+.chat-workspace {
+  height: calc(100dvh - 17.5rem - var(--safe-top) - var(--safe-bottom));
+  min-height: 24rem;
+}
+@media (min-width: 1024px) {
+  .chat-workspace { height: calc(100dvh - 15rem - var(--safe-top) - var(--safe-bottom)); }
+}
+
 @media (min-width: 640px) {
   .portal-header, .portal-main {
     padding-left: max(1.5rem, var(--safe-left));

@@ -7,10 +7,11 @@ import {
   LayoutDashboard,
   FolderKanban,
   Clock,
-  CalendarDays,
+  MessageSquare,
   Menu,
   ShieldCheck,
 } from 'lucide-react';
+import { useChat } from '../../context/ChatContext';
 
 interface MobileBottomNavProps {
   onToggleMenu: () => void;
@@ -22,6 +23,7 @@ export default function MobileBottomNav({
   mobileMenuOpen,
 }: MobileBottomNavProps) {
   const pathname = usePathname();
+  const { unreadCount } = useChat();
 
   const navItems = [
     {
@@ -41,9 +43,9 @@ export default function MobileBottomNav({
       isCenter: true,
     },
     {
-      label: 'Leaves',
-      href: '/leaves',
-      icon: CalendarDays,
+      label: 'Chat',
+      href: '/chat',
+      icon: MessageSquare,
     },
   ];
 
@@ -96,6 +98,7 @@ export default function MobileBottomNav({
             >
               <div className="relative">
                 <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                {item.href === '/chat' && unreadCount > 0 && <span className="absolute -right-3 -top-2 rounded-full bg-[#5470F4] px-1 text-[9px] text-white" aria-label={`${unreadCount} unread messages`}>{unreadCount > 99 ? '99+' : unreadCount}</span>}
                 {isActive && (
                   <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5CC5FA]" />
                 )}

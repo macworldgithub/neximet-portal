@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
 import { apiGet, apiPost, apiPut } from '../../lib/api';
 import {
   Clock,
@@ -12,6 +13,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Bell,
+  MessageSquare,
   KeyRound,
   ChevronRight,
   ShieldAlert,
@@ -33,6 +35,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
+  const { unreadCount } = useChat();
   const { user, isSuperAdmin, logout } = useAuth();
   const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [timeStr, setTimeStr] = useState('');
@@ -185,6 +188,10 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
         {/* Right: Notifications, User details & Sign Out */}
         <div className="flex items-center gap-2 sm:gap-4">
+          <Link href="/chat" aria-label={`Team chat${unreadCount ? `, ${unreadCount} unread messages` : ''}`} className="relative hidden sm:block rounded-xl border border-[#1F293D] bg-[#111827] p-2.5 text-gray-400 hover:text-[#5CC5FA]">
+            <MessageSquare size={18} />
+            {unreadCount > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-[#5470F4] px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+          </Link>
           {/* Super Admin Unified Notification Center */}
           {isSuperAdmin && (
             <div className="relative" ref={notifRef}>

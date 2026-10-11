@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { apiGet } from '../../lib/api';
+import { useChat } from '../../context/ChatContext';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -21,6 +22,7 @@ import {
   X,
   Settings,
   Download,
+  MessageSquare,
 } from 'lucide-react';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import { usePwa } from '../pwa/PwaProvider';
@@ -32,6 +34,7 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
+  const { unreadCount } = useChat();
   const { user, isSuperAdmin } = useAuth();
   const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [projectsCount, setProjectsCount] = useState<number | null>(null);
@@ -62,6 +65,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const isExecutive = isSuperAdmin || user?.role === 'CEO';
 
   const navItems = [
+    { label: 'Team Chat', href: '/chat', icon: MessageSquare, badge: unreadCount ? `${unreadCount} unread` : null },
     {
       label: 'Executive Dashboard',
       href: '/dashboard',

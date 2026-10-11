@@ -1,0 +1,268 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Check, CheckCheck, Download, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
+import { API_URL, apiFetch, apiPost, getToken } from '../../lib/api';
+import { chatTitle, initials, mergeMessages, type ChatConversation, type ChatMessage } from '../../lib/chat';
+import NewChatModal from '../../components/chat/NewChatModal';
+
+type PendingMessage = { clientId: string; chatId: string; text: string; file?: File; state: 'sending' | 'failed'; error?: string };
+const time = (date: string) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const day = (date: string) => new Date(date).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+const field = 'w-full rounded-xl border border-[#1F293D] bg-[#0B0F19] text-sm outline-none focus:border-[#5470F4]';
+
+export default function ChatPage() {
+  const { user } = useAuth();
+  const { conversations, loading: inboxLoading, error: inboxError, refresh } = useChat();
+  const [active, setActive] = useState<ChatConversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [newChat, setNewChat] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [query, setQuery] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, { text: string; file?: File }>>({});
+  const [pending, setPending] = useState<PendingMessage[]>([]);
+  const [newMessagesBelow, setNewMessagesBelow] = useState(false);
+  const [online, setOnline] = useState(true);
+  const activeId = active?._id;
+  const currentChat = useRef(activeId);
+  currentChat.current = activeId;
+  const messageRef = useRef(messages);
+  messageRef.current = messages;
+  const scroller = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const nearBottom = useRef(true);
+  const readBusy = useRef(false);
+  const typingAt = useRef(0);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendingIds = useRef(new Set<string>());
+  const draft = activeId ? drafts[activeId] || { text: '' } : { text: '' };
+
+  const scrollToBottom = useCallback(() => {
+    bottom.current?.scrollIntoView({ block: 'end' });
+    nearBottom.current = true;
+    setNewMessagesBelow(false);
+  }, []);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener('online', update); window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const controller = new AbortController();
+    let busy = false;
+    let initialized = false;
+    setMessages([]); setLoading(true); setHasMore(false); setError(''); setActionError(''); setShowMembers(false);
+    nearBottom.current = true; setNewMessagesBelow(false);
+    const poll = async () => {
+      if (busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const previous = messageRef.current;
+        const result = await apiFetch(`/chat/conversations/${activeId}/messages`, { signal: controller.signal, cache: 'no-store' });
+        if (controller.signal.aborted) return;
+        if (!result.success) { setError(result.message || 'Messages could not be loaded'); return; }
+        let incoming: ChatMessage[] = result.messages;
+        // Fetch gaps during high traffic; the latest page also catches delayed writes and read receipts.
+        if (initialized && previous.length && incoming.length && incoming[0].sequence > previous[previous.length - 1].sequence) {
+          let cursor = previous[previous.length - 1].sequence;
+          let more = true;
+          while (more && !controller.signal.aborted) {
+            const catchup = await apiFetch(`/chat/conversations/${activeId}/messages?after=${cursor}`, { signal: controller.signal, cache: 'no-store' });
+            if (!catchup.success) throw new Error(catchup.message || 'Unable to sync messages');
+            incoming = mergeMessages(incoming, catchup.messages);
+            more = catchup.hasMore && catchup.messages.length > 0;
+            if (catchup.messages.length) cursor = catchup.messages[catchup.messages.length - 1].sequence;
+          }
+        }
+        if (controller.signal.aborted) return;
+        setActive(result.conversation);
+        const firstLoad = !initialized;
+        setMessages((current) => mergeMessages(firstLoad ? [] : current, incoming));
+        setPending((current) => current.filter((item) => !incoming.some((message) => message.clientId === item.clientId && message.sender?._id === user?.id)));
+        if (!initialized) setHasMore(result.hasMore);
+        initialized = true; setError('');
+      } catch (failure) {
+        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Unable to sync messages');
+      } finally { busy = false; if (!controller.signal.aborted) setLoading(false); }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3000);
+    const resume = () => { if (document.visibilityState === 'visible') void poll(); };
+    document.addEventListener('visibilitychange', resume); window.addEventListener('online', resume);
+    return () => {
+      controller.abort(); clearInterval(timer);
+      document.removeEventListener('visibilitychange', resume); window.removeEventListener('online', resume);
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingAt.current = 0;
+      void apiPost(`/chat/conversations/${activeId}/typing`, { typing: false });
+    };
+  }, [activeId, user?.id]);
+
+  const latestSequence = messages[messages.length - 1]?.sequence;
+  useEffect(() => {
+    if (nearBottom.current) scrollToBottom();
+    else setNewMessagesBelow(true);
+  }, [latestSequence, scrollToBottom]);
+
+  useEffect(() => {
+    if (!activeId || !user) return;
+    const mark = async () => {
+      if (readBusy.current || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+      const ids = messageRef.current.filter((message) => message.sender?._id !== user.id && !message.readBy.includes(user.id)).map((message) => message._id).slice(-100);
+      if (!ids.length) return;
+      readBusy.current = true;
+      try {
+        const result = await apiPost(`/chat/conversations/${activeId}/read`, { messageIds: ids });
+        if (result.success && currentChat.current === activeId) {
+          setMessages((current) => current.map((message) => ids.includes(message._id) ? { ...message, readBy: [...new Set([...message.readBy, user.id])] } : message));
+          void refresh();
+        }
+      } finally { readBusy.current = false; }
+    };
+    void mark();
+    const timer = setInterval(() => void mark(), 3000);
+    window.addEventListener('focus', mark);
+    return () => { clearInterval(timer); window.removeEventListener('focus', mark); };
+  }, [activeId, user, latestSequence, refresh]);
+
+  const selectChat = (chat: ChatConversation) => { setActive(chat); };
+  const updateDraft = (text: string) => {
+    if (!activeId) return;
+    setDrafts((current) => ({ ...current, [activeId]: { ...current[activeId], text } }));
+    if (text.trim() && Date.now() - typingAt.current > 3000) {
+      typingAt.current = Date.now(); void apiPost(`/chat/conversations/${activeId}/typing`, { typing: true });
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => void apiPost(`/chat/conversations/${activeId}/typing`, { typing: false }), 2000);
+  };
+
+  const deliver = async (item: PendingMessage) => {
+    if (sendingIds.current.has(item.clientId)) return;
+    sendingIds.current.add(item.clientId);
+    setPending((current) => current.map((entry) => entry.clientId === item.clientId ? { ...entry, state: 'sending', error: undefined } : entry));
+    try {
+      const body = new FormData();
+      body.append('text', item.text); body.append('clientId', item.clientId);
+      if (item.file) body.append('attachment', item.file);
+      const response = await fetch(`${API_URL}/chat/conversations/${item.chatId}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body, signal: AbortSignal.timeout(30000) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Message could not be sent');
+      if (currentChat.current === item.chatId) {
+        nearBottom.current = true;
+        setMessages((current) => mergeMessages(current, [result.message]));
+      }
+      setPending((current) => current.filter((entry) => entry.clientId !== item.clientId));
+      void refresh();
+    } catch (failure) {
+      setPending((current) => current.map((entry) => entry.clientId === item.clientId ? { ...entry, state: 'failed', error: failure instanceof Error ? failure.message : 'Message could not be sent' } : entry));
+    } finally { sendingIds.current.delete(item.clientId); }
+  };
+  const send = () => {
+    if (!activeId || (!draft.text.trim() && !draft.file) || !online || loading) return;
+    const item: PendingMessage = { clientId: crypto.randomUUID(), chatId: activeId, text: draft.text.trim(), file: draft.file, state: 'sending' };
+    setPending((current) => [...current, item]);
+    setDrafts((current) => ({ ...current, [activeId]: { text: '' } }));
+    nearBottom.current = true;
+    void deliver(item); composer.current?.focus();
+    requestAnimationFrame(scrollToBottom);
+  };
+
+  const loadOlder = async () => {
+    if (!activeId || !messages.length || historyLoading) return;
+    setHistoryLoading(true); setActionError('');
+    const id = activeId;
+    const result = await apiFetch(`/chat/conversations/${id}/messages?before=${messages[0].sequence}`, { cache: 'no-store' });
+    if (currentChat.current === id) {
+      if (result.success) {
+        const height = scroller.current?.scrollHeight || 0;
+        const top = scroller.current?.scrollTop || 0;
+        nearBottom.current = false;
+        setMessages((current) => mergeMessages(current, result.messages)); setHasMore(result.hasMore);
+        requestAnimationFrame(() => { if (scroller.current) scroller.current.scrollTop = top + scroller.current.scrollHeight - height; });
+      } else setActionError(result.message || 'Unable to load history');
+    }
+    setHistoryLoading(false);
+  };
+
+  const download = async (message: ChatMessage) => {
+    setActionError('');
+    try {
+      const response = await fetch(`${API_URL}/chat/conversations/${message.conversation}/messages/${message._id}/attachment`, { headers: { Authorization: `Bearer ${getToken()}` }, cache: 'no-store' });
+      if (!response.ok) throw new Error('Unable to download this file. Please retry.');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a'); link.href = url; link.download = message.attachment?.name || 'attachment'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (failure) { setActionError(failure instanceof Error ? failure.message : 'Download failed'); }
+  };
+
+  const addFile = (file?: File) => {
+    if (!activeId || !file) return;
+    if (file.size > 3 * 1024 * 1024) { setActionError('Files must be 3 MB or smaller'); return; }
+    if (!/\.(png|jpe?g|webp|gif|pdf|txt|csv|docx|xlsx|pptx|zip)$/i.test(file.name)) { setActionError('Use an image, PDF, text, Office document, or ZIP file'); return; }
+    setActionError(''); setDrafts((current) => ({ ...current, [activeId]: { text: current[activeId]?.text || '', file } }));
+  };
+  if (!user) return null;
+  const title = active ? chatTitle(active, user.id) : '';
+  const typing = active?.members.filter((member) => member.user?._id !== user.id && member.typingUntil && new Date(member.typingUntil).getTime() > Date.now()).map((member) => member.user?.name).filter(Boolean) || [];
+  const visibleChats = conversations.filter((chat) => `${chatTitle(chat, user.id)} ${chat.lastMessage?.text || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const unsent = pending.filter((item) => item.chatId === activeId && !messages.some((message) => message.clientId === item.clientId && message.sender?._id === user.id));
+  return <div className="flex min-w-0 flex-col gap-4">
+    <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Team Chat</h1><p className="mt-1 text-sm text-gray-400">Keep work moving, together.</p></div><button onClick={() => setNewChat(true)} className="gradient-btn flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"><Plus size={18} /><span className="hidden sm:inline">New conversation</span><span className="sm:hidden">New chat</span></button></div>
+    <div className="chat-workspace flex min-h-0 overflow-hidden rounded-2xl border border-[#1F293D] bg-[#111827]">
+      <aside aria-label="Conversations" className={`${active ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-[#1F293D] md:w-72 xl:w-80`}>
+        <div className="border-b border-[#1F293D] p-4"><div className="relative"><Search size={17} className="absolute left-3 top-3 text-gray-500" /><input aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} className={`${field} py-3 pl-10 pr-3`} /></div></div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {inboxError && <div role="alert" className="m-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">{inboxError}<button onClick={() => void refresh()} className="ml-2 underline">Retry</button></div>}
+          {inboxLoading && <p className="p-8 text-center text-sm text-gray-400">Loading conversations…</p>}
+          {!inboxLoading && !visibleChats.length && <div className="p-8 text-center"><MessageSquare className="mx-auto mb-3 text-[#5470F4]" size={30} /><p className="text-sm font-medium">{query ? 'No matching conversations' : 'Start a conversation'}</p><p className="mt-2 text-xs leading-relaxed text-gray-400">{query ? 'Try a different name or message.' : 'Message a teammate or bring your team into a group chat.'}</p>{!query && <button onClick={() => setNewChat(true)} className="mt-4 text-sm text-[#5CC5FA]">Find a teammate</button>}</div>}
+          {visibleChats.map((chat) => { const label = chatTitle(chat, user.id); return <button key={chat._id} onClick={() => selectChat(chat)} aria-pressed={activeId === chat._id} className={`mb-1 flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors ${activeId === chat._id ? 'bg-[#5470F4]/15' : 'hover:bg-[#161F30]'}`}>
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${chat.kind === 'group' ? 'bg-purple-500/15 text-purple-300' : 'bg-[#5470F4]/15 text-[#5CC5FA]'}`}>{chat.kind === 'group' ? <Users size={20} /> : initials(label)}</span>
+            <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{label}</span>{chat.lastMessage && <span className="shrink-0 text-[10px] text-gray-500">{new Date(chat.lastMessage.createdAt).toDateString() === new Date().toDateString() ? time(chat.lastMessage.createdAt) : new Date(chat.lastMessage.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>}</span><span className="mt-1 flex items-center justify-between gap-2"><span className="truncate text-xs text-gray-400">{chat.lastMessage?.text || chat.lastMessage?.attachment?.name || 'Say hello'}</span>{!!chat.unreadCount && <span aria-label={`${chat.unreadCount} unread messages`} className="rounded-full bg-[#5470F4] px-2 py-0.5 text-[10px] font-bold text-white">{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>}</span></span>
+          </button>; })}
+        </div><p className="border-t border-[#1F293D] px-4 py-3 text-[11px] text-gray-500">Private conversations for your team</p>
+      </aside>
+      {active ? <section aria-label={`Chat with ${title}`} className="relative flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b border-[#1F293D] px-4 py-3"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
+        {showMembers && <div className="max-h-40 overflow-y-auto border-b border-[#1F293D] bg-[#0B0F19] p-4"><p className="mb-2 text-xs font-semibold text-gray-400">Conversation members</p>{active.members.map((member, index) => <p key={member.user?._id || index} className="py-1 text-sm">{member.user?.name || 'Former teammate'}{member.user?._id === user.id ? ' (you)' : ''}<span className="ml-2 text-xs text-gray-500">{member.user?.isActive === false ? 'Inactive' : member.user?.role}</span></p>)}</div>}
+        {(!online || error) && <p role="status" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">{!online ? 'You are offline. Your drafts are kept while this page stays open.' : `${error} · Reconnecting automatically…`}</p>}
+        <div ref={scroller} onScroll={() => { const node = scroller.current; if (node) { nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100; if (nearBottom.current) setNewMessagesBelow(false); } }} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#0B0F19]/50 p-4 sm:p-6">
+          {hasMore && <div className="text-center"><button disabled={historyLoading} onClick={() => void loadOlder()} className="rounded-xl border border-[#1F293D] px-4 py-2 text-xs text-gray-400 hover:text-white disabled:opacity-50">{historyLoading ? 'Loading…' : 'Load earlier messages'}</button></div>}
+          {loading && <div className="flex justify-center p-10"><Loader2 className="animate-spin text-[#5470F4]" size={24} /></div>}
+          {!loading && !messages.length && !error && <div className="py-12 text-center"><MessageSquare className="mx-auto mb-3 text-[#5470F4]" size={36} /><p className="text-sm text-gray-300">Start the conversation with {title}.</p></div>}
+          {messages.map((message, index) => { const own = message.sender?._id === user.id; const read = active.members.filter((member) => member.user && member.user._id !== user.id).every((member) => message.readBy.includes(member.user!._id)); return <div key={message._id}>
+            {(index === 0 || day(message.createdAt) !== day(messages[index - 1].createdAt)) && <div className="mb-5 text-center"><span className="rounded-full border border-[#1F293D] bg-[#111827] px-3 py-1 text-[10px] text-gray-400">{day(message.createdAt)}</span></div>}
+            <div className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[90%] rounded-2xl px-4 py-3 sm:max-w-[80%] ${own ? 'rounded-br-sm bg-[#5470F4]/85 text-white' : 'rounded-bl-sm border border-[#1F293D] bg-[#161F30]'}`}>
+              {!own && active.kind === 'group' && <p className="mb-1 text-xs font-semibold text-[#5CC5FA]">{message.sender?.name || 'Former teammate'}</p>}
+              {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">{message.text}</p>}
+              {message.attachment?.name && <button onClick={() => void download(message)} className="mt-2 flex max-w-full items-center gap-3 rounded-xl border border-white/15 bg-black/15 p-3 text-left hover:bg-black/25"><Download className="shrink-0" size={18} /><span className="min-w-0"><span className="block truncate text-xs font-medium">{message.attachment.name}</span><span className="text-[10px] opacity-60">{(message.attachment.size / 1024).toFixed(0)} KB · Download</span></span></button>}
+              <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] opacity-70"><time dateTime={message.createdAt}>{time(message.createdAt)}</time>{own && <span title={read ? 'Read by everyone' : 'Sent'} aria-label={read ? 'Read by everyone' : 'Sent'}>{read ? <CheckCheck size={14} className="text-cyan-200" /> : <Check size={14} />}</span>}</div>
+            </div></div>
+          </div>; })}
+          {unsent.map((item) => <div key={item.clientId} className="flex justify-end"><div className="max-w-[90%] rounded-2xl rounded-br-sm border border-[#5470F4]/40 bg-[#5470F4]/20 px-4 py-3"><p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.text}</p>{item.file && <p className="mt-1 break-all text-xs text-gray-400">{item.file.name}</p>}{item.state === 'sending' ? <p className="mt-2 text-right text-[10px] text-gray-400">Sending…</p> : <div className="mt-2 text-xs text-rose-300"><p role="alert">{item.error}</p><button onClick={() => void deliver(item)} disabled={!online} className="mt-2 inline-flex items-center gap-1 underline disabled:opacity-40"><RefreshCw size={12} />Retry</button><button onClick={() => setPending((current) => current.filter((entry) => entry.clientId !== item.clientId))} className="ml-3 underline">Dismiss</button></div>}</div></div>)}
+          <div ref={bottom} />
+        </div>
+        {newMessagesBelow && <button onClick={scrollToBottom} className="absolute bottom-36 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[#5470F4]/40 bg-[#111827] px-4 py-2 text-xs text-[#5CC5FA] shadow-lg"><ChevronDown size={15} />New messages</button>}
+        <div className="min-h-5 px-4 text-xs text-[#5CC5FA]" aria-live="polite">{typing.length > 0 && `${typing.slice(0, 2).join(', ')}${typing.length > 2 ? ' and others' : ''} ${typing.length === 1 ? 'is' : 'are'} typing…`}</div>
+        <form onSubmit={(event) => { event.preventDefault(); send(); }} className="border-t border-[#1F293D] p-3 sm:p-4">
+          {actionError && <p role="alert" className="mb-2 flex items-center justify-between gap-2 text-xs text-rose-300">{actionError}<button type="button" aria-label="Dismiss error" onClick={() => setActionError('')}><X size={14} /></button></p>}
+          {draft.file && <div className="mb-2 flex items-center gap-2 rounded-lg bg-[#161F30] px-3 py-2 text-xs"><Paperclip size={14} /><span className="min-w-0 flex-1 truncate">{draft.file.name}</span><button type="button" aria-label="Remove attachment" onClick={() => activeId && setDrafts((current) => ({ ...current, [activeId]: { text: current[activeId]?.text || '' } }))}><X size={16} /></button></div>}
+          <div className="flex items-end gap-2"><input ref={fileInput} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip" className="hidden" onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /><button type="button" aria-label="Attach a file (up to 3 MB)" onClick={() => fileInput.current?.click()} className="mb-1 rounded-xl p-2.5 text-gray-400 hover:bg-[#1F293D] hover:text-white"><Paperclip size={20} /></button><textarea ref={composer} aria-label="Message" placeholder={`Message ${title}…`} rows={2} maxLength={4000} value={draft.text} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.matchMedia('(min-width: 768px)').matches) { event.preventDefault(); send(); } }} className={`${field} max-h-36 min-h-12 resize-none p-3`} /><button type="submit" disabled={loading || !online || (!draft.text.trim() && !draft.file)} aria-label="Send message" className="gradient-btn mb-1 rounded-xl p-3 disabled:opacity-40"><Send size={19} /></button></div><p className="mt-2 text-[10px] text-gray-500"><span className="hidden md:inline">Enter to send · Shift+Enter for a new line · </span>Files up to 3 MB{draft.text.length > 3500 && <span className="float-right">{draft.text.length}/4000</span>}</p>
+        </form>
+      </section> : <div className="hidden flex-1 flex-col items-center justify-center px-8 text-center md:flex"><div className="mb-5 rounded-3xl border border-[#5470F4]/20 bg-[#5470F4]/10 p-6"><MessageSquare className="text-[#5CC5FA]" size={44} /></div><h2 className="text-xl font-semibold">Your team, one conversation away</h2><p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-400">Share updates, ask questions, and keep everyone connected. Choose a conversation or start a new one.</p><button onClick={() => setNewChat(true)} className="gradient-btn mt-6 rounded-xl px-5 py-3 text-sm font-semibold">Start a conversation</button></div>}
+    </div>
+    {newChat && <NewChatModal onClose={() => setNewChat(false)} onCreated={(chat) => { setNewChat(false); selectChat(chat); void refresh(); }} />}
+  </div>;
+}
