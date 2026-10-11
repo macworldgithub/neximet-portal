@@ -39,7 +39,8 @@ export default function LoginPage() {
 
     const res = await login(email.trim(), password);
     if (res.success) {
-      router.push('/dashboard');
+      const chat = new URLSearchParams(window.location.search).get('chat');
+      router.push(chat && /^[a-f\d]{24}$/i.test(chat) ? `/chat?conversation=${chat}` : '/dashboard');
     } else {
       setError(res.message || 'Invalid credentials. Please verify your email and password.');
     }

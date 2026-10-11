@@ -22,9 +22,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user && !isLoginPage) {
-      router.replace('/login');
+      const chat = pathname === '/chat' ? new URLSearchParams(window.location.search).get('conversation') : null;
+      router.replace(chat && /^[a-f\d]{24}$/i.test(chat) ? `/login?chat=${chat}` : '/login');
     }
-  }, [user, loading, isLoginPage, router]);
+  }, [user, loading, isLoginPage, router, pathname]);
 
   if (isLoginPage) {
     return (

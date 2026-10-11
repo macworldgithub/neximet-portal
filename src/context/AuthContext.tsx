@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiGet, apiPost, getToken, setToken, removeToken } from '../lib/api';
+import { disablePush } from '../lib/push';
 
 export type UserRole = 'CEO' | 'Super Admin' | 'Project Manager' | 'Team Manager' | 'Team Member';
 export type Department =
@@ -34,7 +35,7 @@ interface AuthContextType {
   loading: boolean;
   isSuperAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   hasRole: (...roles: UserRole[]) => boolean;
 }
@@ -61,11 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(res.user);
         setTokenState(existingToken);
       } else {
+        void disablePush().catch(() => {});
         removeToken();
         setUser(null);
         setTokenState(null);
       }
     } catch {
+      void disablePush().catch(() => {});
       removeToken();
       setUser(null);
       setTokenState(null);
@@ -107,7 +110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await disablePush().catch(() => {});
     removeToken();
     setUser(null);
     setTokenState(null);

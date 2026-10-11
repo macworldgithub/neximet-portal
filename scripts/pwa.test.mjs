@@ -19,9 +19,9 @@ test('manifest launch scope and all declared PNG icon dimensions are valid', () 
   }
 });
 
-function worker({ online = false, failInstall = false, failWrite = false } = {}) {
+function worker({ online = false, failInstall = false, failWrite = false, stores = new Map() } = {}) {
   const handlers = {};
-  const stores = new Map();
+  const notifications = [], fetched = [], opened = [];
   let claimed = false;
   const cacheFor = (name) => {
     if (!stores.has(name)) stores.set(name, new Map());
@@ -41,9 +41,14 @@ function worker({ online = false, failInstall = false, failWrite = false } = {})
   };
   vm.runInNewContext(source, {
     URL, Response,
-    self: { location: { origin }, addEventListener: (name, fn) => { handlers[name] = fn; }, clients: { claim: async () => { claimed = true; } } },
+    self: {
+      location: { origin }, addEventListener: (name, fn) => { handlers[name] = fn; }, skipWaiting: async () => {},
+      registration: { showNotification: async (title, options) => notifications.push({ title, ...options }), getNotifications: async () => notifications.map((item) => ({ close: () => { item.closed = true; } })) },
+      clients: { claim: async () => { claimed = true; }, matchAll: async () => [], openWindow: async (url) => { opened.push(url); } },
+    },
     caches: { open: async (name) => cacheFor(name), keys: async () => [...stores.keys()], delete: async (name) => stores.delete(name) },
-    fetch: async () => {
+    fetch: async (url, options) => {
+      fetched.push({ url, options });
       if (!online) throw new TypeError('Network unavailable');
       const response = new Response('network response');
       Object.defineProperty(response, 'type', { value: 'basic' });
@@ -52,10 +57,16 @@ function worker({ online = false, failInstall = false, failWrite = false } = {})
   });
   return {
     stores,
+    notifications, fetched, opened,
     get claimed() { return claimed; },
     async lifecycle(name) {
       const work = [];
       handlers[name]({ waitUntil: (promise) => work.push(promise) });
+      await Promise.all(work);
+    },
+    async dispatch(name, data) {
+      const work = [];
+      handlers[name]({ ...data, waitUntil: (promise) => work.push(promise) });
       await Promise.all(work);
     },
     async request(path, { mode = 'cors', method = 'GET', headers = {} } = {}) {
@@ -87,7 +98,7 @@ test('activation removes only obsolete Neximet caches', async () => {
   sw.stores.set('another-app', new Map());
   await sw.lifecycle('install');
   await sw.lifecycle('activate');
-  assert.deepEqual([...sw.stores.keys()].sort(), ['another-app', 'neximet-portal-v2']);
+  assert.deepEqual([...sw.stores.keys()].sort(), ['another-app', 'neximet-portal-v3']);
   assert.equal(sw.claimed, true);
 });
 
@@ -104,7 +115,7 @@ test('navigation works online without persisting private account HTML', async ()
   const sw = worker({ online: true });
   await sw.lifecycle('install');
   assert.equal(await (await sw.request('/dashboard', { mode: 'navigate' })).text(), 'network response');
-  assert.equal(sw.stores.get('neximet-portal-v2').has(`${origin}/dashboard`), false);
+  assert.equal(sw.stores.get('neximet-portal-v3').has(`${origin}/dashboard`), false);
 });
 
 test('cached assets load offline; uncached assets return a valid error Response', async () => {
@@ -117,7 +128,7 @@ test('cached assets load offline; uncached assets return a valid error Response'
 test('static cache writes finish within event lifetime and quota errors do not break online assets', async () => {
   const sw = worker({ online: true });
   await sw.request('/_next/static/app.js');
-  assert.equal(sw.stores.get('neximet-portal-v2').has(`${origin}/_next/static/app.js`), true);
+  assert.equal(sw.stores.get('neximet-portal-v3').has(`${origin}/_next/static/app.js`), true);
   const full = worker({ online: true, failWrite: true });
   assert.equal(await (await full.request('/_next/static/app.js')).text(), 'network response');
 });
@@ -127,4 +138,56 @@ test('missing offline cache produces a readable 503 response', async () => {
   const response = await sw.request('/dashboard', { mode: 'navigate' });
   assert.equal(response.status, 503);
   assert.match(await response.text(), /offline/i);
+});
+
+const userId = '000000000000000000000001';
+const conversationId = '000000000000000000000002';
+const payload = { userId, conversationId, title: 'Sam Rivera', body: 'New team message', url: `/chat?conversation=${conversationId}`, receiptToken: 'scoped-delivery-receipt' };
+test('push displays an account-bound notification and acknowledges only delivery, even after worker restart', async () => {
+  const original = worker({ online: true });
+  await original.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  const sw = worker({ online: true, stores: original.stores });
+  await sw.dispatch('push', { data: { json: () => payload } });
+  assert.equal(sw.notifications[0].title, payload.title);
+  assert.equal(sw.notifications[0].body, payload.body);
+  assert.equal(sw.notifications[0].data.url, `${origin}${payload.url}`);
+  assert.equal(sw.fetched.length, 1);
+  assert.equal(sw.fetched[0].url, 'https://api.neximet.test/api/chat/push/delivered');
+  assert.equal(sw.fetched[0].options.headers.Authorization, undefined);
+  assert.deepEqual(JSON.parse(sw.fetched[0].options.body), { receiptToken: payload.receiptToken });
+  assert.equal(JSON.stringify([...sw.stores.values()].flatMap((store) => [...store.keys()])).includes(payload.receiptToken), false);
+});
+
+test('logout closes notifications and hides private previews from late pushes or other accounts', async () => {
+  const sw = worker({ online: true });
+  await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('push', { data: { json: () => payload } });
+  await sw.dispatch('message', { data: { type: 'CLEAR_PUSH_ACCOUNT' } });
+  assert.equal(sw.notifications[0].closed, true);
+  await sw.dispatch('push', { data: { json: () => payload } });
+  assert.equal(sw.notifications[1].title, 'Neximet Portal');
+  assert.equal(sw.notifications[1].body.includes(payload.body), false);
+  assert.equal(sw.fetched.length, 1);
+  await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId: '000000000000000000000003', apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('push', { data: { json: () => payload } });
+  assert.equal(sw.notifications[2].title, 'Neximet Portal');
+  assert.equal(sw.fetched.length, 1);
+});
+
+test('notification click opens the correct chat and rejects external URLs', async () => {
+  const sw = worker();
+  await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  let closed = false;
+  await sw.dispatch('notificationclick', { notification: { close: () => { closed = true; }, data: { userId, url: payload.url } } });
+  assert.equal(closed, true);
+  assert.equal(sw.opened[0], `${origin}${payload.url}`);
+  await sw.dispatch('notificationclick', { notification: { close() {}, data: { userId, url: 'https://evil.example/steal' } } });
+  assert.equal(sw.opened[1], `${origin}/chat`);
+});
+
+test('malformed push payloads show a safe generic notification without crashing', async () => {
+  const sw = worker();
+  await sw.dispatch('push', { data: { json: () => { throw new Error('Bad JSON'); } } });
+  assert.equal(sw.notifications[0].title, 'Neximet Portal');
+  assert.equal(sw.fetched.length, 0);
 });
