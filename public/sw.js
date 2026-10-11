@@ -1,10 +1,11 @@
 const CACHE_PREFIX = 'neximet-portal-';
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 const OFFLINE_URL = '/offline.html';
 const STATIC_ASSETS = [
   OFFLINE_URL,
   '/neximet-logo.avif',
   '/icons/icon-192x192.png',
+  '/icons/notification-badge-96x96.png',
   '/icons/icon-512x512.png',
   '/icons/maskable-icon-512x512.png',
   '/apple-touch-icon.png',
@@ -53,7 +54,10 @@ self.addEventListener('push', (event) => event.waitUntil((async () => {
   const belongsToAccount = account && payload?.userId === account.userId;
   await self.registration.showNotification(belongsToAccount ? String(payload.title || 'Neximet Chat').slice(0, 120) : 'Neximet Portal', {
     body: belongsToAccount ? String(payload.body || 'You have a new message').slice(0, 200) : 'Open the app to check your messages.',
-    icon: '/icons/icon-192x192.png', badge: '/icons/icon-192x192.png',
+    icon: '/icons/icon-192x192.png',
+    // The small Android status-bar icon must be an alpha-only logo silhouette.
+    // An opaque app-icon background turns into a solid square when masked.
+    badge: '/icons/notification-badge-96x96.png',
     tag: belongsToAccount ? `chat-${payload.conversationId}` : 'neximet-chat',
     data: { url: belongsToAccount ? chatUrl(payload.url) : `${self.location.origin}/chat`, userId: belongsToAccount ? account.userId : null },
   });

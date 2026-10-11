@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import sharp from 'sharp';
 
 const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 const origin = 'https://neximet.test';
@@ -17,6 +19,24 @@ test('manifest launch scope and all declared PNG icon dimensions are valid', () 
     assert.equal(png.subarray(1, 4).toString(), 'PNG');
     assert.equal(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`, icon.sizes, icon.src);
   }
+});
+
+test('Android notification badge is a white logo mask with transparent padding and gaps', async () => {
+  const { data, info } = await sharp(fileURLToPath(new URL('../public/icons/notification-badge-96x96.png', import.meta.url)))
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.equal(info.width, 96);
+  assert.equal(info.height, 96);
+  assert.equal(info.channels, 4);
+  let visible = 0, transparent = 0;
+  for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) {
+    const index = (y * 96 + x) * 4;
+    const alpha = data[index + 3];
+    if (x < 8 || x >= 88 || y < 8 || y >= 88) assert.equal(alpha, 0, 'badge must have transparent padding');
+    if (alpha > 0) { visible++; assert.deepEqual([...data.subarray(index, index + 3)], [255, 255, 255]); }
+    else transparent++;
+  }
+  assert.ok(visible > 1000, 'the logo should be legible at small sizes');
+  assert.ok(transparent > 5000, 'the backdrop and spaces between logo strokes must stay transparent');
 });
 
 function worker({ online = false, failInstall = false, failWrite = false, stores = new Map() } = {}) {
@@ -98,7 +118,7 @@ test('activation removes only obsolete Neximet caches', async () => {
   sw.stores.set('another-app', new Map());
   await sw.lifecycle('install');
   await sw.lifecycle('activate');
-  assert.deepEqual([...sw.stores.keys()].sort(), ['another-app', 'neximet-portal-v3']);
+  assert.deepEqual([...sw.stores.keys()].sort(), ['another-app', 'neximet-portal-v4']);
   assert.equal(sw.claimed, true);
 });
 
@@ -115,7 +135,7 @@ test('navigation works online without persisting private account HTML', async ()
   const sw = worker({ online: true });
   await sw.lifecycle('install');
   assert.equal(await (await sw.request('/dashboard', { mode: 'navigate' })).text(), 'network response');
-  assert.equal(sw.stores.get('neximet-portal-v3').has(`${origin}/dashboard`), false);
+  assert.equal(sw.stores.get('neximet-portal-v4').has(`${origin}/dashboard`), false);
 });
 
 test('cached assets load offline; uncached assets return a valid error Response', async () => {
@@ -128,7 +148,7 @@ test('cached assets load offline; uncached assets return a valid error Response'
 test('static cache writes finish within event lifetime and quota errors do not break online assets', async () => {
   const sw = worker({ online: true });
   await sw.request('/_next/static/app.js');
-  assert.equal(sw.stores.get('neximet-portal-v3').has(`${origin}/_next/static/app.js`), true);
+  assert.equal(sw.stores.get('neximet-portal-v4').has(`${origin}/_next/static/app.js`), true);
   const full = worker({ online: true, failWrite: true });
   assert.equal(await (await full.request('/_next/static/app.js')).text(), 'network response');
 });
@@ -150,6 +170,8 @@ test('push displays an account-bound notification and acknowledges only delivery
   await sw.dispatch('push', { data: { json: () => payload } });
   assert.equal(sw.notifications[0].title, payload.title);
   assert.equal(sw.notifications[0].body, payload.body);
+  assert.equal(sw.notifications[0].badge, '/icons/notification-badge-96x96.png');
+  assert.equal(sw.notifications[0].icon, '/icons/icon-192x192.png');
   assert.equal(sw.notifications[0].data.url, `${origin}${payload.url}`);
   assert.equal(sw.fetched.length, 1);
   assert.equal(sw.fetched[0].url, 'https://api.neximet.test/api/chat/push/delivered');

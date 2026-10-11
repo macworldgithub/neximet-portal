@@ -124,6 +124,8 @@ async function generateIcons() {
     .toFile(path.join(iconsDir, 'maskable-icon-512x512.png'));
   console.log('Generated maskable-icon-512x512.png');
 
+  await require('./generate-notification-badge')();
+
   console.log('All PWA icon assets generated successfully!');
 }
 
