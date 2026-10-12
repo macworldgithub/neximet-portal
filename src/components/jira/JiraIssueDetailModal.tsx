@@ -253,9 +253,9 @@ export default function JiraIssueDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex justify-end">
-      <div className="w-full max-w-4xl bg-[#0D1322] border-l border-[#1F293D] h-full overflow-y-auto custom-scrollbar flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Issue details" className="w-full max-w-4xl bg-[#0D1322] border-l border-[#1F293D] h-[100dvh] overflow-y-auto overscroll-contain custom-scrollbar flex flex-col shadow-2xl animate-in slide-in-from-right duration-200 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {/* Top Header Bar */}
-        <div className="sticky top-0 z-20 bg-[#0D1322]/95 backdrop-blur-md border-b border-[#1F293D] px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-20 shrink-0 bg-[#0D1322]/95 backdrop-blur-md border-b border-[#1F293D] px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center justify-between">
           <div className="flex items-center gap-3">
             {/* Issue Type Selector */}
             <select
@@ -301,6 +301,7 @@ export default function JiraIssueDetailModal({
 
             <button
               onClick={onClose}
+              aria-label="Close issue details"
               className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#1F293D] transition-colors"
             >
               <X className="w-5 h-5" />
@@ -309,7 +310,7 @@ export default function JiraIssueDetailModal({
         </div>
 
         {/* Modal Content Grid */}
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
+        <div className="p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 flex-1 min-h-0 [&>*]:min-w-0">
           {/* Left Column: Title, Description, Subtasks, Comments (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
             {/* Title / Summary */}

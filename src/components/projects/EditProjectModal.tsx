@@ -118,8 +118,8 @@ export default function EditProjectModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-y-auto">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-2xl sm:rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in duration-150 my-auto">
+    <div className="portal-modal fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-label="Edit project" className="bg-[#111827] border border-[#1F293D] rounded-2xl sm:rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in duration-150 my-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 sm:px-7 sm:py-5 border-b border-[#1F293D] bg-[#161F30]/60">
           <div className="flex items-center gap-3">

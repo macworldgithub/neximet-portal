@@ -118,25 +118,26 @@ export default function EditEmployeeModal({
   const managerOptions = allEmployees.filter((emp) => emp._id !== employee._id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col">
+    <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Edit employee" className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#1F293D] sticky top-0 bg-[#111827]/95 backdrop-blur z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+        <div className="flex shrink-0 items-start justify-between gap-2 p-4 sm:p-6 border-b border-[#1F293D] sticky top-0 bg-[#111827]/95 backdrop-blur z-10">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="hidden sm:flex w-10 h-10 shrink-0 rounded-2xl bg-amber-500/10 border border-amber-500/30 items-center justify-center text-amber-400">
               <UserCheck className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-white flex flex-col items-start gap-1">
                 Edit Employee & Compensation
-                <span className="text-xs font-normal text-gray-400">({employee.email})</span>
+                <span className="break-all text-xs font-normal text-gray-400">({employee.email})</span>
               </h3>
               <p className="text-xs text-gray-400">Executive modification of salary, daily wage & reporting line</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
+            aria-label="Close employee editor"
+            className="shrink-0 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>

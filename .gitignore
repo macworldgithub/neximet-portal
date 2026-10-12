@@ -13,6 +13,7 @@ out/
 build/
 dist/
 .turbo/
+/public/sw-build.js
 
 # Environment files
 .env

@@ -100,21 +100,22 @@ export default function AdminResetPasswordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl shadow-black/80">
+    <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Reset employee password" className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl shadow-black/80">
         {/* Header */}
         <div className="px-6 py-5 border-b border-[#1F293D] flex items-center justify-between bg-[#0E1424]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="min-w-0 flex-1 flex items-center gap-3">
+            <div className="hidden sm:flex w-10 h-10 shrink-0 rounded-2xl bg-amber-500/10 border border-amber-500/30 items-center justify-center text-amber-400">
               <KeyRound className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-base font-bold text-white">Reset Employee Password</h3>
               <p className="text-xs text-gray-400">Super Admin Administrative Credential Override</p>
             </div>
           </div>
           <button
             onClick={handleClose}
+            aria-label="Close employee password reset"
             className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
           >
             <X className="w-5 h-5" />

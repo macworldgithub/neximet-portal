@@ -83,8 +83,8 @@ export default function CreateIssueModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#0D1322] border border-[#1F293D] rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 sm:p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-150">
+    <div className="portal-modal fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+      <div role="dialog" aria-modal="true" aria-label="Create issue" className="bg-[#0D1322] border border-[#1F293D] rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 sm:p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1F293D] pb-4">
           <div className="flex items-center gap-2.5">
@@ -101,6 +101,7 @@ export default function CreateIssueModal({
 
           <button
             onClick={onClose}
+            aria-label="Close issue creation"
             className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#1F293D] transition-colors"
           >
             <X className="w-5 h-5" />

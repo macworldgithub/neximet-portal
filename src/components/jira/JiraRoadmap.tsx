@@ -73,7 +73,7 @@ export default function JiraRoadmap({ issues, onSelectIssue }: JiraRoadmapProps)
       </div>
 
       {/* Timeline Gantt-style table */}
-      <div className="bg-[#0D1322] border border-[#1F293D] rounded-3xl p-6 shadow-2xl overflow-hidden space-y-4">
+      <div className="bg-[#0D1322] border border-[#1F293D] rounded-3xl p-3 sm:p-6 shadow-2xl space-y-4">
         <div className="grid grid-cols-12 gap-4 pb-3 border-b border-[#1F293D] text-[11px] font-bold uppercase tracking-wider text-gray-400">
           <div className="col-span-5 sm:col-span-4">Work Item</div>
           <div className="col-span-2 hidden sm:block">Assignee</div>
@@ -101,10 +101,10 @@ export default function JiraRoadmap({ issues, onSelectIssue }: JiraRoadmapProps)
               <div
                 key={issue._id}
                 onClick={() => onSelectIssue(issue)}
-                className="grid grid-cols-12 gap-4 items-center p-3 rounded-2xl bg-[#111827] hover:bg-[#162138] border border-[#1E293D] hover:border-[#5470F4]/60 transition-all cursor-pointer group"
+                className="grid grid-cols-12 gap-2 sm:gap-4 items-center p-3 rounded-2xl bg-[#111827] hover:bg-[#162138] border border-[#1E293D] hover:border-[#5470F4]/60 transition-all cursor-pointer group"
               >
                 {/* Item Details */}
-                <div className="col-span-5 sm:col-span-4 flex items-center gap-2.5 min-w-0">
+                <div className="col-span-12 sm:col-span-4 flex items-center gap-2.5 min-w-0">
                   <div
                     className={`p-1.5 rounded-lg border shrink-0 ${typeDetails.color}`}
                     title={typeDetails.label}
@@ -122,10 +122,10 @@ export default function JiraRoadmap({ issues, onSelectIssue }: JiraRoadmapProps)
                 </div>
 
                 {/* Assignee */}
-                <div className="col-span-2 hidden sm:flex items-center gap-2">
+                <div className="col-span-2 hidden sm:flex items-center gap-2 min-w-0">
                   {issue.assignedTo ? (
                     <>
-                      <div className="w-5 h-5 rounded-md bg-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center text-[9px] font-bold text-[#5CC5FA]">
+                      <div className="w-5 h-5 shrink-0 rounded-md bg-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center text-[9px] font-bold text-[#5CC5FA]">
                         {issue.assignedTo.name
                           .split(' ')
                           .map((n) => n[0])
@@ -147,7 +147,7 @@ export default function JiraRoadmap({ issues, onSelectIssue }: JiraRoadmapProps)
                 </div>
 
                 {/* Timeline Bar representation */}
-                <div className="col-span-7 sm:col-span-6 md:col-span-4">
+                <div className="col-span-12 sm:col-span-6 md:col-span-4">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px]">
                       <span className="font-mono text-gray-400 uppercase font-semibold">

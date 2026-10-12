@@ -123,15 +123,15 @@ export default function ForgotPasswordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div role="dialog" aria-modal="true" aria-label="Reset account access" className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl shadow-black/90">
         {/* Header */}
         <div className="px-6 py-5 border-b border-[#1F293D] flex items-center justify-between bg-[#0E1424]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#5470F4]/10 border border-[#5470F4]/30 flex items-center justify-center text-[#5CC5FA]">
+          <div className="min-w-0 flex-1 flex items-center gap-3">
+            <div className="hidden sm:flex w-10 h-10 shrink-0 rounded-2xl bg-[#5470F4]/10 border border-[#5470F4]/30 items-center justify-center text-[#5CC5FA]">
               <KeyRound className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-base font-bold text-white">Reset Account Access</h3>
               <p className="text-xs text-gray-400">Neximet Corporate Portal Security</p>
             </div>

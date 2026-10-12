@@ -445,10 +445,10 @@ export default function DashboardPage() {
 
             <div className="h-72 w-full pt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={departmentBarData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1F293D" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" fontSize={11} interval={0} />
-                  <YAxis stroke="#9CA3AF" fontSize={11} />
+                <BarChart layout="vertical" data={departmentBarData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1F293D" horizontal={false} />
+                  <XAxis type="number" stroke="#9CA3AF" fontSize={10} />
+                  <YAxis type="category" dataKey="name" width={100} stroke="#9CA3AF" fontSize={10} interval={0} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#161F30',
@@ -458,8 +458,8 @@ export default function DashboardPage() {
                       fontSize: '12px',
                     }}
                   />
-                  <Bar dataKey="progress" name="Avg Completion (%)" fill="#5470F4" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="active" name="Active Projects" fill="#5CC5FA" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="progress" name="Avg Completion (%)" fill="#5470F4" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  <Bar dataKey="active" name="Active Projects" fill="#5CC5FA" radius={[0, 6, 6, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -475,6 +475,7 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
+                    isAnimationActive={false}
                     data={projectStatusData}
                     cx="50%"
                     cy="50%"
@@ -772,10 +773,10 @@ export default function DashboardPage() {
                     href={`/projects/${proj._id}`}
                     className="block p-3 rounded-xl bg-[#161F30]/60 border border-[#1F293D] hover:border-[#5470F4]/40 hover:bg-[#161F30] transition-all group"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <span className="text-[10px] font-bold text-gray-400">{proj.code}</span>
-                        <h4 className="text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors truncate max-w-[180px]">
+                        <h4 className="text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors break-words">
                           {proj.title}
                         </h4>
                       </div>

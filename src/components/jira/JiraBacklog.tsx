@@ -64,7 +64,7 @@ export default function JiraBacklog({
         onClick={() => onSelectIssue(issue)}
         className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-[#111827] hover:bg-[#162238] border border-[#1E293D] hover:border-[#5470F4]/50 rounded-2xl transition-all cursor-pointer shadow-sm"
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-1 items-center gap-3 min-w-0">
           {/* Issue Type Icon */}
           <div
             className={`p-1.5 rounded-lg border shrink-0 ${typeDetails.color}`}
@@ -79,7 +79,7 @@ export default function JiraBacklog({
           </span>
 
           {/* Summary */}
-          <span className="text-xs font-medium text-white truncate max-w-lg">
+          <span className="min-w-0 flex-1 text-xs font-medium text-white truncate max-w-lg">
             {issue.title}
           </span>
 
@@ -100,7 +100,7 @@ export default function JiraBacklog({
 
         {/* Right Info: Status, Priority, Points, Assignee */}
         <div
-          className="flex items-center gap-3 shrink-0 self-end sm:self-auto"
+          className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-auto max-w-full"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Status selector */}

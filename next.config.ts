@@ -19,8 +19,8 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        source: "/sw.js",
+      ...["/sw.js", "/sw-build.js"].map((source) => ({
+        source,
         headers: [
           {
             key: "Content-Type",
@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
             value: "no-cache, no-store, must-revalidate",
           },
         ],
-      },
+      })),
     ];
   },
 };

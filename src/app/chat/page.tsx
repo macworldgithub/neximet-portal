@@ -40,6 +40,7 @@ export default function ChatPage() {
   const messageRef = useRef(messages);
   messageRef.current = messages;
   const scroller = useRef<HTMLDivElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -49,6 +50,32 @@ export default function ChatPage() {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sendingIds = useRef(new Set<string>());
   const draft = activeId ? drafts[activeId] || { text: '' } : { text: '' };
+
+  useEffect(() => {
+    const panel = workspace.current;
+    if (!panel) return;
+    const resize = () => {
+      const nav = document.querySelector<HTMLElement>('nav[aria-label="Mobile Navigation"]');
+      const navHeight = nav?.getBoundingClientRect().height || 0;
+      const top = panel.getBoundingClientRect().top + window.scrollY;
+      const height = window.visualViewport?.height || window.innerHeight;
+      const updateHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pwa-update-height')) || 0;
+      const visibleBottom = height - navHeight - updateHeight - 16;
+      panel.style.setProperty('--chat-height', `${Math.max(288, visibleBottom - top)}px`);
+    };
+    const observer = new ResizeObserver(resize);
+    if (panel.previousElementSibling) observer.observe(panel.previousElementSibling);
+    window.addEventListener('resize', resize);
+    window.addEventListener('pwa-layout-change', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    resize();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pwa-layout-change', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
+    };
+  }, [user?.id]);
 
   const scrollToBottom = useCallback(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
@@ -278,7 +305,7 @@ export default function ChatPage() {
   const unsent = pending.filter((item) => item.chatId === activeId && !messages.some((message) => message.clientId === item.clientId && message.sender?._id === user.id));
   return <div className="flex min-w-0 flex-col gap-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Team Chat</h1><p className="mt-1 text-sm text-gray-400">{connected ? 'Live · Connected' : 'Connecting · Messages sync automatically'}</p></div><div className="flex flex-wrap items-center gap-2"><ChatNotifications userId={user.id} /><button onClick={() => setNewChat(true)} className="gradient-btn flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"><Plus size={18} /><span className="hidden sm:inline">New conversation</span><span className="sm:hidden">New chat</span></button></div></div>
-    <div className="chat-workspace flex min-h-0 overflow-hidden rounded-2xl border border-[#1F293D] bg-[#111827]">
+    <div ref={workspace} className="chat-workspace flex min-h-0 overflow-hidden rounded-2xl border border-[#1F293D] bg-[#111827]">
       <aside aria-label="Conversations" className={`${active ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-[#1F293D] md:w-72 xl:w-80`}>
         <div className="border-b border-[#1F293D] p-4"><div className="relative"><Search size={17} className="absolute left-3 top-3 text-gray-500" /><input aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} className={`${field} py-3 pl-10 pr-3`} /></div></div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">

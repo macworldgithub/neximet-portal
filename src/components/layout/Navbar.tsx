@@ -177,11 +177,11 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
             </button>
           )}
 
-          <div className="flex items-center gap-2 sm:gap-3 bg-[#111827] px-3 sm:px-4 py-2 rounded-xl border border-[#1F293D]">
+          <div className="portal-clock flex items-center gap-2 sm:gap-3 bg-[#111827] px-3 sm:px-4 py-2 rounded-xl border border-[#1F293D]">
             <Clock className="w-4 h-4 text-[#5CC5FA] animate-pulse shrink-0" />
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-white font-mono">{timeStr || '09:00:00 AM'}</span>
-              <span className="text-[10px] text-gray-400 hidden sm:block">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
+              <span className="text-[10px] text-gray-400 hidden xl:block">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
             </div>
           </div>
         </div>
@@ -203,6 +203,8 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                     : 'bg-[#111827] text-gray-400 border-[#1F293D] hover:text-white hover:border-[#5470F4]/40'
                 }`}
                 title="Super Admin Notifications & Approvals"
+                aria-label="Super Admin Notifications & Approvals"
+                aria-expanded={showNotifDropdown}
               >
                 <Bell className="w-4 h-4" />
                 {totalUnread > 0 && (
@@ -217,9 +219,9 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
               {/* Notification Dropdown Panel */}
               {showNotifDropdown && (
-                <div className="absolute right-0 mt-3 w-[calc(100vw-32px)] sm:w-[440px] max-w-[440px] bg-[#111827] border border-[#1F293D] rounded-3xl shadow-2xl shadow-black/90 p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="fixed top-[calc(5rem+env(safe-area-inset-top))] left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-[440px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-11rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto bg-[#111827] border border-[#1F293D] rounded-3xl shadow-2xl shadow-black/90 p-4 space-y-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                   {/* Header */}
-                  <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1F293D] pb-3">
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="w-4 h-4 text-[#5CC5FA]" />
                       <h4 className="text-xs font-bold text-white uppercase tracking-wider">
@@ -509,8 +511,8 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                 className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-2xl bg-[#111827] hover:bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 transition-all text-left group cursor-pointer"
                 title="Edit Phone & Password"
               >
-                <div className="text-right hidden sm:block">
-                  <p className="text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors leading-tight">
+                <div className="text-right hidden xl:block max-w-40">
+                  <p className="truncate text-xs font-bold text-white group-hover:text-[#5CC5FA] transition-colors leading-tight">
                     {user.name}
                   </p>
                   <p className="text-[10px] text-gray-400 font-mono">
@@ -533,6 +535,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
           <button
             onClick={logout}
             title="Sign Out of Portal"
+            aria-label="Sign Out of Portal"
             className="p-2.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold"
           >
             <LogOut className="w-4 h-4" />

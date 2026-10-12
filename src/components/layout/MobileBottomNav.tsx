@@ -9,7 +9,6 @@ import {
   Clock,
   MessageSquare,
   Menu,
-  ShieldCheck,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 
@@ -51,7 +50,7 @@ export default function MobileBottomNav({
 
   return (
     <nav
-      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B0F19]/90 backdrop-blur-xl border-t border-[#1F293D] px-2 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black"
+      className="portal-mobile-nav lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B0F19]/90 backdrop-blur-xl border-t border-[#1F293D] px-2 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black"
       aria-label="Mobile Navigation"
     >
       <div className="flex items-center justify-around max-w-md mx-auto">

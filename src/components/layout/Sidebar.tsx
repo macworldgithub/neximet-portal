@@ -139,12 +139,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         }`}
       >
         {/* Brand Header */}
-        <div className="h-20 px-6 flex items-center justify-between border-b border-[#1F293D] bg-[#0E1424]">
-          <Link href="/dashboard" onClick={handleLinkClick} className="flex items-center gap-2.5 group">
+        <div className="h-20 shrink-0 px-5 flex items-center justify-between gap-2 border-b border-[#1F293D] bg-[#0E1424]">
+          <Link href="/dashboard" onClick={handleLinkClick} className="min-w-0 flex items-center gap-2 group">
             <img
               src="/neximet-logo.avif"
               alt="Neximet"
-              className="h-8 w-auto max-w-[130px] object-contain drop-shadow group-hover:scale-105 transition-transform"
+              className="h-8 w-auto max-w-[110px] shrink-0 object-contain drop-shadow group-hover:scale-105 transition-transform"
             />
             <span className="text-[10px] font-bold bg-[#5470F4]/20 text-[#5CC5FA] px-2 py-0.5 rounded-full border border-[#5470F4]/30">
               PORTAL

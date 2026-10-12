@@ -100,12 +100,12 @@ export default function ProfileSettingsModal({ isOpen, onClose }: ProfileSetting
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-5 sm:p-7 max-w-lg w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+    <div className="portal-modal fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-label="Profile and security settings" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-5 sm:p-7 max-w-lg w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1F293D] pb-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#5470F4]/10 border border-[#5470F4]/30 text-[#5CC5FA]">
+          <div className="min-w-0 flex-1 flex items-start gap-2.5">
+            <div className="hidden sm:block shrink-0 p-2 rounded-xl bg-[#5470F4]/10 border border-[#5470F4]/30 text-[#5CC5FA]">
               <User className="w-5 h-5" />
             </div>
             <div>
@@ -115,7 +115,8 @@ export default function ProfileSettingsModal({ isOpen, onClose }: ProfileSetting
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+            aria-label="Close profile settings"
+            className="shrink-0 p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
             title="Close"
           >
             <X className="w-5 h-5" />

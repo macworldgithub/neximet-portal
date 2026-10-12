@@ -208,7 +208,7 @@ export default function LoginPage() {
               href="https://neximet.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#5CC5FA] hover:underline"
+              className="inline-flex min-h-11 items-center text-[#5CC5FA] hover:underline"
             >
               neximet.com
             </a>

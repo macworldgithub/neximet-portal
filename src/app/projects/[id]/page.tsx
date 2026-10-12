@@ -1096,12 +1096,12 @@ export default function ProjectDetailPage() {
                     className="bg-[#111827] border border-[#1F293D] hover:border-[#5470F4]/40 rounded-2xl p-5 shadow-xl space-y-4 transition-all"
                   >
                     {/* Platform & Env */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1 basis-40 flex items-center gap-2">
                         <div className="p-2 bg-[#5470F4]/15 text-[#5CC5FA] rounded-xl border border-[#5470F4]/30">
                           <Key className="w-4 h-4" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <h4 className="text-sm font-bold text-white">{cred.platform}</h4>
                           <span className="text-[10px] text-gray-400 font-medium">{cred.environment}</span>
                         </div>
@@ -1175,13 +1175,13 @@ export default function ProjectDetailPage() {
 
                     {/* Endpoint URL & Notes */}
                     {cred.endpointUrl && (
-                      <div className="text-xs flex items-center justify-between border-t border-[#1F293D] pt-2.5">
-                        <span className="text-gray-400 truncate max-w-[220px]">{cred.endpointUrl}</span>
+                      <div className="text-xs flex items-center justify-between gap-3 border-t border-[#1F293D] pt-2.5">
+                        <span className="min-w-0 flex-1 text-gray-400 truncate">{cred.endpointUrl}</span>
                         <a
                           href={cred.endpointUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#5CC5FA] hover:underline flex items-center gap-1 font-semibold text-[11px]"
+                          className="shrink-0 text-[#5CC5FA] hover:underline flex items-center gap-1 font-semibold text-[11px]"
                         >
                           <span>Open URL</span>
                           <ExternalLink className="w-3 h-3" />
@@ -1198,7 +1198,7 @@ export default function ProjectDetailPage() {
                 );
               })
             ) : (
-              <div className="col-span-2 p-12 text-center bg-[#111827] rounded-3xl border border-[#1F293D] space-y-2">
+              <div className="col-span-full p-6 sm:p-12 text-center bg-[#111827] rounded-3xl border border-[#1F293D] space-y-2">
                 <Key className="w-10 h-10 text-gray-500 mx-auto" />
                 <p className="text-xs font-bold text-white">No platform credentials recorded</p>
                 <p className="text-xs text-gray-400">Safely store WordPress logins, Stripe keys, or OpenAI tokens.</p>
@@ -1208,8 +1208,8 @@ export default function ProjectDetailPage() {
 
           {/* Add Credential Modal */}
           {showAddCredModal && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
+            <div className="portal-modal fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div role="dialog" aria-modal="true" aria-label="Add platform credential" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Key className="w-5 h-5 text-[#5CC5FA]" />
                   <span>Store Platform Credential</span>
@@ -1354,7 +1354,7 @@ export default function ProjectDetailPage() {
                         : 'bg-[#161F30]/60 border-[#1F293D]'
                       }`}
                   >
-                    <div className="flex items-center gap-3.5">
+                    <div className="min-w-0 flex-1 flex items-center gap-3.5">
                       <button
                         onClick={() => handleToggleMilestone(index)}
                         disabled={!hasRole('CEO', 'Project Manager')}
@@ -1366,7 +1366,7 @@ export default function ProjectDetailPage() {
                         {isCompleted && <Check className="w-4 h-4 stroke-[3]" />}
                       </button>
 
-                      <div>
+                      <div className="min-w-0">
                         <h5 className={`text-xs font-bold ${isCompleted ? 'text-gray-300 line-through' : 'text-white'}`}>
                           {milestone.title}
                         </h5>
@@ -1399,8 +1399,8 @@ export default function ProjectDetailPage() {
       {/* Tab 4: Resource Allocation */}
       {activeTab === 'resources' && (
         <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-[#5470F4]" />
                 <span>Assigned Team Squad & Capacity</span>
@@ -1492,8 +1492,8 @@ export default function ProjectDetailPage() {
 
           {/* Assign Member Modal */}
           {showAddMemberModal && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="portal-modal fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div role="dialog" aria-modal="true" aria-label="Assign team member" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
                 <h3 className="text-base font-bold text-white">Assign Member to Project</h3>
                 <form onSubmit={handleAddMember} className="space-y-4">
                   <div>
@@ -1627,9 +1627,9 @@ export default function ProjectDetailPage() {
                   return (
                     <div
                       key={log._id}
-                      className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] flex items-start justify-between gap-4 group hover:border-[#5470F4]/30 transition-all"
+                      className="p-4 rounded-2xl bg-[#161F30]/60 border border-[#1F293D] flex flex-col sm:flex-row items-start justify-between gap-4 group hover:border-[#5470F4]/30 transition-all"
                     >
-                      <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-full sm:w-auto sm:flex-1 flex items-start gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/30 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shrink-0">
                           {log.user?.name ? log.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'US'}
                         </div>
@@ -1685,8 +1685,8 @@ export default function ProjectDetailPage() {
 
           {/* Log Time Modal */}
           {showLogTimeModal && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="portal-modal fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div role="dialog" aria-modal="true" aria-label="Log work hours" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
                 <h3 className="text-base font-bold text-white">Log Work Hours</h3>
                 <form onSubmit={handleLogTime} className="space-y-3">
                   <div>
@@ -1752,8 +1752,8 @@ export default function ProjectDetailPage() {
 
       {/* Edit Resource Allocation Modal */}
       {editingMember && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+        <div className="portal-modal fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Edit resource allocation" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
@@ -1825,8 +1825,8 @@ export default function ProjectDetailPage() {
 
       {/* Edit Time Log Modal */}
       {editingTimeLog && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+        <div className="portal-modal fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Edit work log" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
@@ -1912,8 +1912,8 @@ export default function ProjectDetailPage() {
 
       {/* Edit Credential Modal */}
       {editingCred && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+        <div className="portal-modal fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Edit platform credential" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-[#5CC5FA]" />
@@ -2057,8 +2057,8 @@ export default function ProjectDetailPage() {
 
       {/* Delete Project Confirmation Modal */}
       {showDeleteProjectModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111827] border border-rose-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
+        <div className="portal-modal fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Delete project confirmation" className="bg-[#111827] border border-rose-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
               <Trash2 className="w-6 h-6" />
             </div>

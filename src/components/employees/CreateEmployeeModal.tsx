@@ -138,12 +138,12 @@ export default function CreateEmployeeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl shadow-black/80 overflow-hidden">
+    <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Create employee" className="bg-[#111827] border border-[#1F293D] rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl shadow-black/80 overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-[#1F293D] flex items-center justify-between bg-[#0E1424]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#5470F4]/20 to-[#5CC5FA]/20 border border-[#5470F4]/40 flex items-center justify-center text-[#5CC5FA]">
+        <div className="shrink-0 px-4 sm:px-6 py-5 border-b border-[#1F293D] flex items-start justify-between gap-2 bg-[#0E1424]">
+          <div className="min-w-0 flex-1 flex items-center gap-3">
+            <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#5470F4]/20 to-[#5CC5FA]/20 border border-[#5470F4]/40 items-center justify-center text-[#5CC5FA]">
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
@@ -153,7 +153,8 @@ export default function CreateEmployeeModal({
           </div>
           <button
             onClick={handleClose}
-            className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
+            aria-label="Close employee creation"
+            className="shrink-0 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -428,7 +429,7 @@ export default function CreateEmployeeModal({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] text-gray-400 mb-1">Casual Leaves</label>
                     <input

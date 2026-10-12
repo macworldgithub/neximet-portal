@@ -123,10 +123,10 @@ export default function EmployeesPage() {
     <div className="space-y-8">
       {/* Title & Super Admin Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-            <Users className="w-6 h-6 text-[#5470F4]" />
-            <span>Team Directory & Organizational Roster</span>
+            <Users className="w-6 h-6 shrink-0 text-[#5470F4]" />
+            <span className="min-w-0">Team Directory & Organizational Roster</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
             Complete personnel roster across Software Development, SEO, Graphics, and WordPress engineering departments.
@@ -134,7 +134,7 @@ export default function EmployeesPage() {
         </div>
 
         {isSuperAdmin && (
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               onClick={() => setCreateModalOpen(true)}
               className="px-4 py-2.5 rounded-xl text-xs font-bold text-white gradient-btn shadow-lg shadow-[#5470F4]/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
@@ -243,8 +243,8 @@ export default function EmployeesPage() {
               className="bg-[#111827] border border-[#1F293D] hover:border-[#5470F4]/50 rounded-3xl p-6 shadow-xl space-y-4 hover:shadow-2xl hover:shadow-[#5470F4]/10 transition-all flex flex-col justify-between"
             >
               <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 basis-40 flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-black text-base text-[#5CC5FA] shadow-md shadow-[#5470F4]/10 shrink-0">
                       {emp.name
                         .split(' ')
@@ -253,14 +253,14 @@ export default function EmployeesPage() {
                         .substring(0, 2)
                         .toUpperCase()}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h4 className="text-sm font-bold text-white">{emp.name}</h4>
                       <p className="text-xs text-[#5CC5FA] font-medium">{emp.designation}</p>
                     </div>
                   </div>
 
                   <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                       emp.role === 'CEO'
                         ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                         : emp.role === 'Super Admin'

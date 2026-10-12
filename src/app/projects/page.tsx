@@ -430,8 +430,8 @@ function ProjectsContent() {
 
       {/* Create Project Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-y-auto">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-2xl sm:rounded-3xl max-w-xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in duration-150">
+        <div className="portal-modal fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Create project" className="bg-[#111827] border border-[#1F293D] rounded-2xl sm:rounded-3xl max-w-xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in duration-150">
             <div className="flex items-center justify-between px-5 py-4 sm:px-7 sm:py-5 border-b border-[#1F293D] bg-[#161F30]/60">
               <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-[#5470F4]/15 border border-[#5470F4]/30 flex items-center justify-center text-[#5CC5FA]">
@@ -441,6 +441,7 @@ function ProjectsContent() {
               </h3>
               <button
                 onClick={() => setShowCreateModal(false)}
+                aria-label="Close project creation"
                 className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#1E293D] transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -594,7 +595,7 @@ function ProjectsContent() {
 
       {/* Delete Project Confirmation Modal */}
       {deletingProject && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="portal-modal fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#111827] border border-rose-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
               <Trash2 className="w-6 h-6" />

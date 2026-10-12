@@ -34,7 +34,7 @@ export default function NewChatModal({ onClose, onCreated }: { onClose: () => vo
     if (result.success) onCreated(result.conversation);
     else setError(result.message || 'Unable to create conversation');
   };
-  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" onClick={() => { if (!saving) onClose(); }}>
+  return <div className="portal-modal fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" onClick={() => { if (!saving) onClose(); }}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="new-chat-title" className="flex max-h-[85dvh] w-full max-w-lg flex-col rounded-2xl border border-[#1F293D] bg-[#111827] shadow-2xl" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
       if (event.key === 'Escape' && !saving) onClose();
       if (event.key === 'Tab') {

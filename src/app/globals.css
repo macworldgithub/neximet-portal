@@ -15,12 +15,82 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  --pwa-update-height: 0px;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation;
+}
+
+/* Grid and flex children must be able to shrink around long names and URLs. */
+.portal-main, .portal-main .grid > *, .portal-modal .grid > * {
+  min-width: 0;
+}
+.portal-main, .portal-modal { overflow-wrap: anywhere; }
+@layer base { img, video, canvas { max-width: 100%; } }
+select { max-width: 100%; }
+
+.portal-modal {
+  padding-top: max(1rem, var(--safe-top));
+  padding-bottom: max(1rem, var(--safe-bottom));
+  padding-left: max(0.75rem, var(--safe-left));
+  padding-right: max(0.75rem, var(--safe-right));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.portal-modal > div {
+  min-width: 0;
+  max-height: calc(100dvh - max(1rem, var(--safe-top)) - max(1rem, var(--safe-bottom)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.portal-modal form, .portal-modal [class~='flex-1'] { min-height: 0; }
+.portal-modal [class~='justify-end'] { flex-wrap: wrap; }
+.portal-modal button { max-width: 100%; }
+.pwa-update {
+  bottom: calc(5.5rem + var(--safe-bottom));
+  left: max(0.75rem, var(--safe-left));
+  right: max(0.75rem, var(--safe-right));
+}
+@media (min-width: 640px) {
+  .pwa-update { left: auto; right: max(1.5rem, var(--safe-right)); max-width: 28rem; }
+}
+@media (min-width: 1024px) { .pwa-update { bottom: max(1.5rem, var(--safe-bottom)); } }
+@media (max-width: 1023px) {
+  /* Keep deployment notices out of the way of the mobile keyboard and chat draft. */
+  body:has(.chat-workspace textarea:focus) .pwa-update { display: none; }
+}
+@media (max-height: 600px) {
+  .pwa-update { grid-template-columns: minmax(0, 1fr) auto; padding: 0.5rem; gap: 0.5rem; }
+  .pwa-update > div { display: none; }
+}
+
+@media (pointer: coarse), (max-width: 1023px) {
+  button, a[aria-label], .portal-header a, .portal-sidebar a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .portal-main a[href], .portal-header a[href], .portal-mobile-nav a[href] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  label:has(input[type='checkbox']), label:has(input[type='radio']) { min-height: 44px; }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), select { min-height: 44px; }
+}
+@media (max-width: 380px) {
+  .portal-header { padding-inline: 0.5rem; gap: 0.25rem; }
+  .portal-header > div { gap: 0.25rem; }
+  .portal-clock { padding-inline: 0.5rem; }
+  .portal-clock svg { display: none; }
+}
+.portal-clock span:first-child { white-space: nowrap; }
+@media (max-width: 340px) {
+  .portal-clock { display: none; }
+}
+@layer base {
+  button:focus-visible, a:focus-visible { outline: 2px solid #5CC5FA; outline-offset: 3px; }
 }
 
 body {
@@ -35,7 +105,7 @@ body {
 }
 
 /* Keep text entry readable without triggering iOS focus zoom. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']):not([type='range']),
   select,
   textarea {
@@ -53,12 +123,13 @@ body {
 
 .portal-main {
   padding-top: calc(6rem + var(--safe-top));
-  padding-bottom: calc(6rem + var(--safe-bottom));
+  padding-bottom: calc(6rem + var(--safe-bottom) + var(--pwa-update-height));
   padding-left: max(0.875rem, var(--safe-left));
   padding-right: max(0.875rem, var(--safe-right));
 }
 
 .portal-sidebar {
+  max-width: 100%;
   height: 100dvh;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
@@ -66,11 +137,19 @@ body {
 }
 
 .chat-workspace {
-  height: calc(100dvh - 17.5rem - var(--safe-top) - var(--safe-bottom));
-  min-height: 24rem;
+  height: var(--chat-height, calc(100dvh - 20.5rem - var(--safe-top) - var(--safe-bottom)));
+  min-height: 18rem;
+}
+
+@media (max-height: 600px) {
+  /* A short landscape/keyboard viewport scrolls the page instead of hiding the composer. */
+  .chat-workspace { height: var(--chat-height, 24rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 @media (min-width: 1024px) {
-  .chat-workspace { height: calc(100dvh - 15rem - var(--safe-top) - var(--safe-bottom)); }
+  .chat-workspace { height: var(--chat-height, calc(100dvh - 15rem - var(--safe-top) - var(--safe-bottom))); }
 }
 
 @media (min-width: 640px) {
@@ -86,7 +165,7 @@ body {
     padding-left: max(2rem, var(--safe-left));
     padding-right: max(2rem, var(--safe-right));
   }
-  .portal-main { padding-bottom: calc(2rem + var(--safe-bottom)); }
+  .portal-main { padding-bottom: calc(2rem + var(--safe-bottom) + var(--pwa-update-height)); }
 }
 
 /* Custom modern scrollbar */

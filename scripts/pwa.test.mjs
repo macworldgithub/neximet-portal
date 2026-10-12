@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import sharp from 'sharp';
 
-const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../pwa/service-worker.js', import.meta.url), 'utf8').replaceAll('__NEXIMET_BUILD__', 'v4');
 const origin = 'https://neximet.test';
 
 test('manifest launch scope and all declared PNG icon dimensions are valid', () => {
