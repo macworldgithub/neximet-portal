@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
-import { apiGet, apiPost, apiPut } from '../../lib/api';
+import { apiGet, apiPut } from '../../lib/api';
+import { COMPANY_TIME_ZONE } from '../../lib/attendance';
 import {
   Clock,
   UserCheck,
@@ -39,8 +40,6 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const { user, isSuperAdmin, logout } = useAuth();
   const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [timeStr, setTimeStr] = useState('');
-  const [todayAttendance, setTodayAttendance] = useState<any>(null);
-  const [clockActionLoading, setClockActionLoading] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Consolidated Admin Notifications State
@@ -59,24 +58,12 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setTimeStr(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setTimeStr(now.toLocaleTimeString('en-US', { timeZone: COMPANY_TIME_ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Fetch today's attendance status
-  const fetchTodayStatus = async () => {
-    try {
-      const res = await apiGet('/attendance/today');
-      if (res.success) {
-        setTodayAttendance(res.attendance);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   // Fetch consolidated notifications for Super Admin / CEO
   const fetchAdminNotifications = async () => {
@@ -93,7 +80,6 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
   useEffect(() => {
     if (user) {
-      fetchTodayStatus();
       if (isSuperAdmin) {
         fetchAdminNotifications();
         const poll = setInterval(fetchAdminNotifications, 15000); // Poll every 15s
@@ -112,22 +98,6 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleQuickCheckIn = async () => {
-    setClockActionLoading(true);
-    try {
-      if (!todayAttendance || !todayAttendance.checkIn) {
-        const res = await apiPost('/attendance/check-in');
-        if (res.success) {
-          setTodayAttendance(res.attendance);
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setClockActionLoading(false);
-    }
-  };
 
   const handleReviewLeave = async (id: string, status: 'approved' | 'rejected') => {
     setLeaveActionLoading(id);
@@ -181,7 +151,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
             <Clock className="w-4 h-4 text-[#5CC5FA] animate-pulse shrink-0" />
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-white font-mono">{timeStr || '09:00:00 AM'}</span>
-              <span className="text-[10px] text-gray-400 hidden xl:block">Shift: 09:00 AM - 06:00 PM (PKR Currency)</span>
+              <span className="text-[10px] text-gray-400 hidden xl:block">Company time · Asia/Karachi</span>
             </div>
           </div>
         </div>

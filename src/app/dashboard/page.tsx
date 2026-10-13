@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
 import { apiGet } from '../../lib/api';
+import { attendanceTime } from '../../lib/attendance';
 import {
   FolderKanban,
   CheckCircle2,
@@ -62,7 +63,7 @@ export default function DashboardPage() {
     if (!isoString) return '--:--';
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return '--:--';
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return attendanceTime(isoString);
   };
 
   if (loading || !stats) {

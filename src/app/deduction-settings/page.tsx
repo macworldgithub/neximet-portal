@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiPut, apiPost } from '../../lib/api';
+import { attendanceGet as apiGet, attendancePut as apiPut, attendancePost as apiPost } from '../../lib/attendanceApi';
 import {
   Coins,
   ShieldCheck,
@@ -25,7 +25,7 @@ import {
 export default function DeductionSettingsPage() {
   const { user, hasRole } = useAuth();
   const isCeo = hasRole('CEO');
-  const canViewLedger = hasRole('CEO', 'Project Manager');
+  const canViewLedger = hasRole('CEO', 'Super Admin', 'Project Manager');
 
   const [rule, setRule] = useState<any>({
     title: 'Neximet Enterprise Attendance & Late Deduction Policy',
@@ -53,12 +53,14 @@ export default function DeductionSettingsPage() {
   const [detectingGps, setDetectingGps] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [policyReady, setPolicyReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Simulator state
   const [testMinutesLate, setTestMinutesLate] = useState(35);
-  const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage || 4667);
+  const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 30) : 0));
+  const [priorLateCount, setPriorLateCount] = useState(0);
   const [simulationResult, setSimulationResult] = useState<any>(null);
 
   // Monthly report state
@@ -66,23 +68,28 @@ export default function DeductionSettingsPage() {
 
   const fetchSettings = async () => {
     setLoading(true);
+    setSimulationResult(null);
+    setMonthlyReport(null);
     try {
       const res = await apiGet('/deductions/rules');
       if (res.success && res.rule) {
         setRule(res.rule);
-      }
+        setPolicyReady(true);
+      } else { setPolicyReady(false); setMsg({ type: 'error', text: res.message || 'Unable to load attendance policy.' }); }
 
       if (canViewLedger) {
         try {
           const reportRes = await apiGet('/deductions/monthly-report');
           if (reportRes.success) {
             setMonthlyReport(reportRes);
-          }
+          } else setMsg({ type: 'error', text: reportRes.message || 'Unable to load the deductions ledger.' });
         } catch {
           // Non-executives don't have access to global company ledger
         }
       }
     } catch (err) {
+      setPolicyReady(false);
+      setMsg({ type: 'error', text: 'Unable to load attendance policy. Please retry.' });
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,43 +98,21 @@ export default function DeductionSettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+  }, [user?.id, user?.role, canViewLedger]);
 
   // Update simulator whenever test inputs or rule changes
   useEffect(() => {
-    let deduction = 0;
-    let deductionPercentage = 0;
-    let status = 'present';
-    let explanation = '';
-
-    if (testMinutesLate <= rule.gracePeriodMinutes) {
-      status = 'present';
-      explanation = `Arrival is within ${rule.gracePeriodMinutes} mins grace window. 0 PKR deducted.`;
-    } else if (testMinutesLate >= rule.halfDayThresholdMinutes) {
-      status = 'half_day';
-      deductionPercentage = 50;
-      deduction = Math.round(testDailyWage * 0.5);
-      explanation = `Exceeded ${rule.halfDayThresholdMinutes}m threshold. Applied 50% half-day pay penalty = PKR ${deduction}`;
-    } else {
-      status = 'late';
-      if (rule.deductionType === 'percentage') {
-        deductionPercentage = rule.percentageDeductionRate;
-        deduction = Math.round((testDailyWage * rule.percentageDeductionRate) / 100);
-        explanation = `Late by ${testMinutesLate} mins. Deducts ${rule.percentageDeductionRate}% of daily wage (PKR ${testDailyWage}) = PKR ${deduction}`;
-      } else {
-        deduction = rule.fixedDeductionAmount;
-        deductionPercentage = Math.round((rule.fixedDeductionAmount / testDailyWage) * 100);
-        explanation = `Late by ${testMinutesLate} mins. Deducts flat penalty of PKR ${rule.fixedDeductionAmount}.`;
-      }
-    }
-
-    setSimulationResult({
-      status,
-      deduction,
-      deductionPercentage,
-      explanation,
-    });
-  }, [testMinutesLate, testDailyWage, rule]);
+    if (loading || !policyReady) return;
+    let cancelled = false;
+    setSimulationResult(null);
+    const timer = setTimeout(async () => {
+      const res = await apiPost('/deductions/simulate', { minutesLate: testMinutesLate, dailyWage: testDailyWage, priorLateCount, ruleOverrides: rule });
+      if (cancelled) return;
+      if (res.success) setSimulationResult(res.simulation);
+      else setSimulationResult({ status: 'unavailable', deduction: '—', explanation: res.message || 'Calculation unavailable. Check the policy and try again.' });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [testMinutesLate, testDailyWage, priorLateCount, rule, loading, policyReady]);
 
   const handleCaptureOfficeGps = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
@@ -158,13 +143,14 @@ export default function DeductionSettingsPage() {
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving || loading || !policyReady) return;
     setSaving(true);
     setMsg(null);
 
     try {
       const res = await apiPut('/deductions/rules', rule);
       if (res.success) {
-        setMsg({ type: 'success', text: 'Attendance, deduction, and office geofence policies updated successfully!' });
+        setMsg({ type: 'success', text: res.message || 'Attendance policy saved.' });
         setRule(res.rule);
       } else {
         setMsg({ type: 'error', text: res.message || 'Failed to update rule' });
@@ -227,6 +213,10 @@ export default function DeductionSettingsPage() {
         </div>
       )}
 
+      <div className="flex justify-end">
+        <button disabled={loading || saving} onClick={() => void fetchSettings()} className="rounded-xl border border-[#1F293D] px-3 py-2.5 text-xs font-semibold text-gray-300 disabled:opacity-50">{loading ? 'Loading policy…' : 'Reload Policy & Ledger'}</button>
+      </div>
+
       {/* Main Settings & Simulator Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form: Policy Rules Configuration */}
@@ -244,7 +234,7 @@ export default function DeductionSettingsPage() {
           </div>
 
           <form onSubmit={handleSaveRule} className="space-y-5">
-            <fieldset disabled={!isCeo} className="space-y-5">
+            <fieldset disabled={!isCeo || !policyReady || loading} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Standard Shift Start Time</label>
@@ -345,11 +335,11 @@ export default function DeductionSettingsPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">
-                  Consecutive Late Threshold (Count)
+                  Monthly Late Threshold (Count; 0 disables)
                 </label>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   max={10}
                   required
                   value={rule.consecutiveLateThreshold}
@@ -373,6 +363,11 @@ export default function DeductionSettingsPage() {
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 mb-1">Full-Day Absence Threshold (Minutes Late)</label>
+              <input type="number" min={rule.halfDayThresholdMinutes + 1} max={1440} required value={rule.fullDayAbsentThresholdMinutes} onChange={e => setRule({ ...rule, fullDayAbsentThresholdMinutes: Number(e.target.value) })} className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-2 text-xs text-white" />
             </div>
 
             {/* Office Geofencing & Location Enforcement Section */}
@@ -550,7 +545,7 @@ export default function DeductionSettingsPage() {
                     </span>
                   </label>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Restricts each physical device/browser to max 1 employee check-in per day. If User A clocks in on a phone/PC, User B cannot log in on that same device to check in.
+                      Restricts each registered browser profile to one employee check-in per attendance day. Administrators can review the recorded browser identifier and selfie.
                   </p>
                 </div>
 
@@ -587,11 +582,11 @@ export default function DeductionSettingsPage() {
             {isCeo ? (
               <>
                 <p className="text-[11px] text-gray-400">
-                  Changes apply immediately to all automated attendance and salary deductions.
+                  Changes apply to future check-ins. Recorded deductions keep their original values.
                 </p>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || loading || !policyReady}
                   className="px-6 py-2.5 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 hover:scale-[1.02] transition-all"
                 >
                   {saving ? 'Saving Rules...' : 'Save Configuration Policy'}
@@ -634,7 +629,7 @@ export default function DeductionSettingsPage() {
                 <input
                   type="range"
                   min={0}
-                  max={120}
+                  max={Math.max(240, rule.fullDayAbsentThresholdMinutes + 60)}
                   step={5}
                   value={testMinutesLate}
                   onChange={(e) => setTestMinutesLate(Number(e.target.value))}
@@ -651,10 +646,15 @@ export default function DeductionSettingsPage() {
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Employee Daily Wage (PKR)</label>
                 <input
                   type="number"
+                  min={0}
                   value={testDailyWage}
                   onChange={(e) => setTestDailyWage(Number(e.target.value))}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white font-mono outline-none"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Previous late arrivals this month</label>
+                <input type="number" min={0} step={1} value={priorLateCount} onChange={e => setPriorLateCount(Number(e.target.value))} className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-2 text-xs text-white" />
               </div>
             </div>
 
@@ -764,7 +764,7 @@ export default function DeductionSettingsPage() {
                 ) : (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-gray-500">
-                      No deductions accrued for this month. All employees arrived on time!
+                      {monthlyReport ? 'No recorded deductions for this month.' : 'The deductions ledger has not loaded.'}
                     </td>
                   </tr>
                 )}

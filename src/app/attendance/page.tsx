@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet, apiPost } from '../../lib/api';
+import { attendanceGet as apiGet, attendancePost as apiPost } from '../../lib/attendanceApi';
+import { COMPANY_TIME_ZONE, attendanceTime, shiftTime, shiftSimulationTimestamp } from '../../lib/attendance';
 import {
   Clock,
   UserCheck,
@@ -36,6 +37,19 @@ import {
 export default function AttendancePage() {
   const { user, hasRole } = useAuth();
   const isCEO = user?.role === 'CEO' || hasRole('CEO');
+  const canManageAttendance = hasRole('CEO', 'Super Admin');
+  const [shift, setShift] = useState({ start: '09:00', end: '18:00', grace: 15, half: 60, full: 180 });
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPages, setHistoryPages] = useState(0);
+  const [attendanceReady, setAttendanceReady] = useState(false);
+  const [companyDay, setCompanyDay] = useState('');
+  const [leaveBalances, setLeaveBalances] = useState<{ casual: number; sick: number; annual: number } | null>(null);
+  const fetchSequence = useRef(0);
+  const actionPending = useRef(false);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraOpenRef = useRef(false);
+  const cameraSequence = useRef(0);
+  const [simulatedPhoto, setSimulatedPhoto] = useState(false);
 
 
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
@@ -60,6 +74,8 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [markingAbsentId, setMarkingAbsentId] = useState<string | null>(null);
+  const [absentTarget, setAbsentTarget] = useState<{ id: string; name: string; date: string } | null>(null);
+  const overridePending = useRef(false);
 
   // CEO Simulation & Testing Sandbox State (Only accessible to CEO)
   const [simulatedHour, setSimulatedHour] = useState('now');
@@ -102,7 +118,7 @@ export default function AttendancePage() {
   const [currentTime, setCurrentTime] = useState('');
   useEffect(() => {
     const updateTime = () => {
-      setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setCurrentTime(new Date().toLocaleTimeString('en-US', { timeZone: COMPANY_TIME_ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -112,12 +128,14 @@ export default function AttendancePage() {
   // Initialize or retrieve persistent Device ID
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      let storedId = localStorage.getItem('neximet_device_id');
-      if (!storedId) {
-        storedId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
-        localStorage.setItem('neximet_device_id', storedId);
-      }
-      setDeviceId(storedId);
+      try {
+        let storedId = localStorage.getItem('neximet_device_id');
+        if (!storedId) {
+          storedId = 'dev_' + crypto.randomUUID();
+          localStorage.setItem('neximet_device_id', storedId);
+        }
+        setDeviceId(storedId);
+      } catch { setMsg({ type: 'error', text: 'Enable browser storage to register this device for attendance.' }); }
     }
   }, []);
 
@@ -136,14 +154,16 @@ export default function AttendancePage() {
   };
 
   // Obtain real device GPS coordinates automatically
-  const acquireLocation = () => {
+  const acquireLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setLocError('Geolocation is not supported by your browser.');
-      return;
+      return null;
     }
     setLocLoading(true);
     setLocError(null);
-    navigator.geolocation.getCurrentPosition(
+    setDeviceCoords(null);
+    setDistanceToOffice(null);
+    return new Promise(resolve => navigator.geolocation.getCurrentPosition(
       (pos) => {
         const coords = {
           latitude: pos.coords.latitude,
@@ -151,6 +171,7 @@ export default function AttendancePage() {
         };
         setDeviceCoords(coords);
         setLocLoading(false);
+        resolve(coords);
       },
       (err) => {
         setLocLoading(false);
@@ -163,9 +184,10 @@ export default function AttendancePage() {
         } else {
           setLocError(`Could not detect GPS coordinates: ${err.message}`);
         }
+        resolve(null);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
-    );
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    ));
   };
 
   // Recalculate distance whenever coords, office location, or CEO simulation change
@@ -184,15 +206,26 @@ export default function AttendancePage() {
         officeLocation.longitude
       );
       setDistanceToOffice(dist);
-    }
+    } else setDistanceToOffice(null);
   }, [deviceCoords, officeLocation, simulatedLocation, isCEO]);
 
   const fetchAttendanceData = async () => {
+    if (!user?.id) return;
+    const sequence = ++fetchSequence.current;
     setLoading(true);
     try {
-      const todayRes = await apiGet('/attendance/today');
+      const [todayRes, histRes, rosterRes] = await Promise.all([
+        apiGet('/attendance/today'),
+        apiGet(`/attendance/history?userId=${encodeURIComponent(user.id)}&page=${historyPage}&limit=20`),
+        canManageAttendance ? apiGet('/attendance/roster') : Promise.resolve(null),
+      ]);
+      if (sequence !== fetchSequence.current) return;
+      setAttendanceReady(!!todayRes.success);
       if (todayRes.success) {
         setTodayAttendance(todayRes.attendance);
+        setCompanyDay(todayRes.date);
+        if (todayRes.leaveBalances) setLeaveBalances(todayRes.leaveBalances);
+        setShift({ start: todayRes.shiftStartTime, end: todayRes.shiftEndTime, grace: todayRes.gracePeriodMinutes, half: todayRes.halfDayThresholdMinutes ?? 60, full: todayRes.fullDayAbsentThresholdMinutes ?? 180 });
         if (todayRes.officeLocation) {
           setOfficeLocation(todayRes.officeLocation);
         }
@@ -201,34 +234,49 @@ export default function AttendancePage() {
         }
       }
 
-      const histRes = await apiGet('/attendance/history');
       if (histRes.success) {
         setHistory(histRes.records);
+        setHistoryPages(histRes.pages);
       }
-
-      if (hasRole('CEO', 'Super Admin')) {
-        const rosterRes = await apiGet('/attendance/roster');
-        if (rosterRes.success) {
-          setRoster(rosterRes.roster);
-        }
-      }
+      if (rosterRes?.success) setRoster(rosterRes.roster);
+      const failure = [todayRes, histRes, rosterRes].find(result => result && !result.success);
+      if (failure) setMsg({ type: 'error', text: failure.message || 'Unable to load attendance. Please retry.' });
     } catch (err) {
       console.error('Attendance fetch error:', err);
     } finally {
-      setLoading(false);
+      if (sequence === fetchSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAttendanceData();
-    acquireLocation();
-  }, [user]);
+    void fetchAttendanceData();
+    const refresh = () => { if (document.visibilityState === 'visible' && !actionPending.current) void fetchAttendanceData(); };
+    const timer = setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    return () => { fetchSequence.current++; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [user?.id, user?.role, historyPage, canManageAttendance]);
+
+  useEffect(() => { setHistoryPage(1); setActiveTab('self'); setTodayAttendance(null); setHistory([]); setRoster([]); setLeaveBalances(null); setAttendanceReady(false); }, [user?.id, user?.role]);
+  useEffect(() => {
+    return () => { cameraOpenRef.current = false; cameraSequence.current++; cameraStreamRef.current?.getTracks().forEach(track => track.stop()); };
+  }, []);
+  useEffect(() => {
+    if (cameraStream && videoRef.current && cameraModalOpen) {
+      videoRef.current.srcObject = cameraStream;
+      void videoRef.current.play().catch(error => { if (error.name !== 'AbortError') setCameraError('Camera preview could not start. Try again.'); });
+    }
+  }, [cameraStream, cameraModalOpen]);
 
   // Webcam Stream Management
   const startCamera = async () => {
+    const sequence = ++cameraSequence.current;
+    cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+    cameraStreamRef.current = null;
+    setCameraStream(null);
     setCameraError(null);
     setCameraStarting(true);
     setCapturedPhoto(null);
+    setSimulatedPhoto(false);
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Webcam device not accessible in this browser.');
@@ -241,36 +289,37 @@ export default function AttendancePage() {
         },
         audio: false,
       });
+      if (sequence !== cameraSequence.current || !cameraOpenRef.current) { stream.getTracks().forEach(track => track.stop()); return; }
+      cameraStreamRef.current = stream;
       setCameraStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
     } catch (err: any) {
       console.warn('Camera stream error:', err);
-      setCameraError(
+      if (sequence === cameraSequence.current && cameraOpenRef.current) setCameraError(
         err.message || 'Could not access webcam camera. Please check camera permissions in your browser.'
       );
     } finally {
-      setCameraStarting(false);
+      if (sequence === cameraSequence.current) setCameraStarting(false);
     }
   };
 
   const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
+    cameraSequence.current++;
+    cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+    cameraStreamRef.current = null;
+    setCameraStream(null);
+    setCameraStarting(false);
   };
 
   // Open camera modal and initialize stream
   const openSelfieModal = () => {
+    cameraOpenRef.current = true;
     setCameraModalOpen(true);
     setCapturedPhoto(null);
     startCamera();
   };
 
   const closeSelfieModal = () => {
+    cameraOpenRef.current = false;
     stopCamera();
     setCameraModalOpen(false);
     setCapturedPhoto(null);
@@ -282,8 +331,10 @@ export default function AttendancePage() {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const width = video.videoWidth || 360;
-      const height = video.videoHeight || 270;
+      if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) { setCameraError('Wait for the camera preview before taking a snapshot.'); return; }
+      const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+      const width = Math.round(video.videoWidth * scale);
+      const height = Math.round(video.videoHeight * scale);
 
       canvas.width = width;
       canvas.height = height;
@@ -293,7 +344,8 @@ export default function AttendancePage() {
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setSimulatedPhoto(false);
         setCapturedPhoto(dataUrl);
         stopCamera();
       }
@@ -332,14 +384,15 @@ export default function AttendancePage() {
         // Draw timestamp & verified tag
         ctx.fillStyle = '#10B981';
         ctx.font = 'bold 13px sans-serif';
-        ctx.fillText('✓ LIVE SELFIE VERIFIED', 180, 195);
+        ctx.fillText('CEO TEST SNAPSHOT', 180, 195);
 
         ctx.fillStyle = '#94A3B8';
         ctx.font = '11px monospace';
-        ctx.fillText(new Date().toLocaleTimeString() + ' • Verified Office Device', 180, 220);
+        ctx.fillText(attendanceTime(new Date()) + ' • Simulation', 180, 220);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setCapturedPhoto(dataUrl);
+        setSimulatedPhoto(true);
         stopCamera();
       }
     }
@@ -347,6 +400,7 @@ export default function AttendancePage() {
 
   // Trigger check-in initiation
   const initiateCheckIn = () => {
+    if (actionPending.current || loading || !attendanceReady) return;
     if (antiProxySettings.requireSelfieVerification) {
       openSelfieModal();
     } else {
@@ -356,25 +410,22 @@ export default function AttendancePage() {
 
   // Submit Check-In Payload
   const executeCheckIn = async (photoPayload: string | null) => {
+    if (actionPending.current || !attendanceReady) return;
+    actionPending.current = true;
     setActionLoading(true);
     setMsg(null);
     let customTime: string | undefined = undefined;
 
     // CEO-only time simulation
     if (isCEO) {
-      const today = new Date();
       if (simulatedHour === 'on_time') {
-        today.setHours(8, 50, 0, 0);
-        customTime = today.toISOString();
+        customTime = shiftSimulationTimestamp(shift.start, 0, companyDay);
       } else if (simulatedHour === 'grace') {
-        today.setHours(9, 10, 0, 0);
-        customTime = today.toISOString();
+        customTime = shiftSimulationTimestamp(shift.start, Math.min(10, shift.grace), companyDay);
       } else if (simulatedHour === 'late_35') {
-        today.setHours(9, 35, 0, 0);
-        customTime = today.toISOString();
+        customTime = shiftSimulationTimestamp(shift.start, Math.min(shift.grace + 20, shift.half - 0.5), companyDay);
       } else if (simulatedHour === 'half_day') {
-        today.setHours(10, 15, 0, 0);
-        customTime = today.toISOString();
+        customTime = shiftSimulationTimestamp(shift.start, shift.half, companyDay);
       }
     }
 
@@ -388,9 +439,6 @@ export default function AttendancePage() {
     } else if (isCEO && simulatedLocation === 'home' && officeLocation) {
       lat = officeLocation.latitude + 0.05; // Far away (Home)
       lng = officeLocation.longitude + 0.05;
-    } else if (deviceCoords) {
-      lat = deviceCoords.latitude;
-      lng = deviceCoords.longitude;
     }
 
     // Determine device ID
@@ -399,8 +447,14 @@ export default function AttendancePage() {
       : deviceId;
 
     try {
+      if (!(isCEO && simulatedLocation !== 'actual') && officeLocation?.enforceLocation) {
+        const fresh = await acquireLocation();
+        if (!fresh) { setMsg({ type: 'error', text: 'Fresh GPS location is required. Allow location access and try again.' }); return; }
+        lat = fresh.latitude; lng = fresh.longitude;
+      }
       const res = await apiPost('/attendance/check-in', {
         customTime,
+        simulated: isCEO && (!!customTime || simulatedLocation !== 'actual' || simulatedDevice !== 'actual' || simulatedPhoto),
         latitude: lat,
         longitude: lng,
         deviceId: activeDeviceId,
@@ -419,22 +473,45 @@ export default function AttendancePage() {
     } catch (err: any) {
       setMsg({ type: 'error', text: err?.message || 'Check-in error occurred' });
     } finally {
+      actionPending.current = false;
       setActionLoading(false);
     }
   };
 
-  // CEO / Admin Mark Employee Absent (revert attendance)
-  const handleMarkAbsent = async (targetUserId: string, userName?: string) => {
-    if (!confirm(`Are you sure you want to mark ${userName || 'this employee'} absent for today? This will cancel their present status and record daily absent deduction.`)) {
-      return;
-    }
+  const handleCheckOut = async () => {
+    if (actionPending.current) return;
+    actionPending.current = true; setActionLoading(true); setMsg(null);
+    try {
+      const res = await apiPost('/attendance/check-out', {});
+      setMsg({ type: res.success ? 'success' : 'error', text: res.message || 'Unable to close shift.' });
+      await fetchAttendanceData();
+    } finally { actionPending.current = false; setActionLoading(false); }
+  };
 
+  const inspectPhoto = async (recordId: string, userName: string, department: string) => {
+    const res = await apiGet(`/attendance/records/${recordId}/photo`);
+    if (!res.success || !res.attendance?.photo) { setMsg({ type: 'error', text: res.message || 'No selfie available.' }); return; }
+    const record = res.attendance;
+    setInspectModal({ isOpen: true, photo: record.photo, userName, department, checkInTime: attendanceTime(record.checkIn),
+      distance: record.location?.isVerified ? `${record.location.distanceMeters}m` : 'GPS not verified', deviceInfo: record.deviceInfo });
+  };
+
+  // CEO / Admin Mark Employee Absent (revert attendance)
+  const handleMarkAbsent = (targetUserId: string, userName?: string, date = companyDay) => {
+    if (overridePending.current || !canManageAttendance) return;
+    if (!date) { setMsg({ type: 'error', text: 'Reload attendance before applying an override.' }); return; }
+    setAbsentTarget({ id: targetUserId, name: userName || 'this employee', date });
+  };
+  const confirmMarkAbsent = async () => {
+    if (!absentTarget || overridePending.current || !canManageAttendance) return;
+    const targetUserId = absentTarget.id;
+    overridePending.current = true;
     setMarkingAbsentId(targetUserId);
     setMsg(null);
     try {
-      const res = await apiPost('/attendance/mark-absent', { userId: targetUserId });
+      const res = await apiPost('/attendance/mark-absent', { userId: targetUserId, date: absentTarget.date });
       if (res.success) {
-        setMsg({ type: 'success', text: res.message || `${userName || 'Employee'} marked absent successfully.` });
+        setMsg({ type: 'success', text: res.message || 'Employee marked absent successfully.' });
         await fetchAttendanceData();
       } else {
         setMsg({ type: 'error', text: res.message || 'Failed to mark employee absent' });
@@ -442,16 +519,20 @@ export default function AttendancePage() {
     } catch (err: any) {
       setMsg({ type: 'error', text: err?.message || 'Error occurred while marking employee absent' });
     } finally {
+      overridePending.current = false;
       setMarkingAbsentId(null);
+      setAbsentTarget(null);
     }
   };
 
   // CEO / Admin Re-mark Employee Present
-  const handleMarkPresent = async (targetUserId: string, userName?: string) => {
+  const handleMarkPresent = async (targetUserId: string, userName?: string, date = companyDay) => {
+    if (overridePending.current || !canManageAttendance) return;
+    overridePending.current = true;
     setMarkingAbsentId(targetUserId);
     setMsg(null);
     try {
-      const res = await apiPost('/attendance/mark-present', { userId: targetUserId });
+      const res = await apiPost('/attendance/mark-present', { userId: targetUserId, date });
       if (res.success) {
         setMsg({ type: 'success', text: res.message || `${userName || 'Employee'} marked present successfully.` });
         await fetchAttendanceData();
@@ -461,6 +542,7 @@ export default function AttendancePage() {
     } catch (err: any) {
       setMsg({ type: 'error', text: err?.message || 'Error occurred while marking employee present' });
     } finally {
+      overridePending.current = false;
       setMarkingAbsentId(null);
     }
   };
@@ -484,7 +566,7 @@ export default function AttendancePage() {
             <span>Attendance & Clock-In Management</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Live GPS geofencing, single-device lock, anti-proxy facial verification, and automated deduction tracking.
+            GPS geofencing, browser device lock, selfie capture, and attendance deductions. Times use Asia/Karachi.
           </p>
         </div>
 
@@ -493,7 +575,7 @@ export default function AttendancePage() {
             <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-purple-400 animate-pulse shrink-0" />
             <div className="text-xs">
               <span className="text-gray-400 block text-[9px] sm:text-[10px]">Anti-Proxy Shield</span>
-              <span className="text-white font-bold text-[11px] sm:text-xs">1-Device Lock + Live Selfie</span>
+              <span className="text-white font-bold text-[11px] sm:text-xs">{antiProxySettings.enforceSingleDevicePerDay ? 'Device Lock' : 'Device Lock Off'} · {antiProxySettings.requireSelfieVerification ? 'Selfie Required' : 'Selfie Optional'}</span>
             </div>
           </div>
 
@@ -501,7 +583,7 @@ export default function AttendancePage() {
             <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             <div className="text-xs">
               <span className="text-gray-400 block text-[9px] sm:text-[10px]">Active Shift</span>
-              <span className="text-white font-bold text-[11px] sm:text-xs">09:00 AM - 06:00 PM (15m Grace)</span>
+              <span className="text-white font-bold text-[11px] sm:text-xs">{shiftTime(shift.start)} – {shiftTime(shift.end)} ({shift.grace}m Grace)</span>
             </div>
           </div>
         </div>
@@ -538,13 +620,17 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Today's State</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Attendance Day: {companyDay || 'Loading…'}</span>
                   <div className="flex items-center gap-2 mt-1">
-                    {todayAttendance?.status === 'absent' ? (
+                    {['on_leave', 'on_holiday'].includes(todayAttendance?.status) ? (
+                      <span className="text-xs font-bold text-blue-300">{todayAttendance.status === 'on_leave' ? 'Approved Leave' : 'Company Holiday'}</span>
+                    ) : todayAttendance?.status === 'absent' ? (
                       <span className="text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 bg-rose-500/20 text-rose-300 border border-rose-500/30">
                         <XCircle className="w-3.5 h-3.5" />
                         <span>Marked Absent</span>
                       </span>
+                    ) : todayAttendance?.status === 'present' && !todayAttendance?.checkIn ? (
+                      <span className="text-xs font-bold text-emerald-300">Marked Present by Administrator</span>
                     ) : todayAttendance?.checkIn ? (
                       <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${todayAttendance.status === 'present'
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -571,8 +657,8 @@ export default function AttendancePage() {
                     photo: todayAttendance.photo,
                     userName: user?.name || 'You',
                     department: user?.department || '',
-                    checkInTime: new Date(todayAttendance.checkIn).toLocaleTimeString(),
-                    distance: todayAttendance.location?.distanceMeters !== null ? `${todayAttendance.location?.distanceMeters}m` : 'Verified',
+                    checkInTime: attendanceTime(todayAttendance.checkIn),
+                    distance: todayAttendance.location?.isVerified ? `${todayAttendance.location.distanceMeters}m` : 'GPS not verified',
                     deviceInfo: todayAttendance.deviceInfo,
                   })}>
                     <img
@@ -592,7 +678,7 @@ export default function AttendancePage() {
                   <span className="text-gray-400 text-[10px] block font-semibold">Check-In</span>
                   <span className="font-bold text-white text-sm">
                     {todayAttendance?.checkIn
-                      ? new Date(todayAttendance.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      ? attendanceTime(todayAttendance.checkIn)
                       : '--:--'}
                   </span>
                 </div>
@@ -600,7 +686,7 @@ export default function AttendancePage() {
                 <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
                   <span className="text-gray-400 text-[10px] block font-semibold">Office Shift End</span>
                   <span className="font-bold text-[#5CC5FA] text-sm">
-                    06:00 PM (Closing)
+                    {shiftTime(shift.end)} (Closing)
                   </span>
                 </div>
               </div>
@@ -627,7 +713,7 @@ export default function AttendancePage() {
                   <div className="flex items-center justify-between text-emerald-400 font-bold text-[11px]">
                     <span className="flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Office GPS & Device Verified</span>
+                      <span>Office GPS Confirmed</span>
                     </span>
                     <span>{todayAttendance.location.distanceMeters !== null ? `${todayAttendance.location.distanceMeters}m` : 'In Range'}</span>
                   </div>
@@ -699,8 +785,8 @@ export default function AttendancePage() {
                   </div>
                 ) : (
                   <div className="p-2 rounded-lg bg-[#161F30] text-[11px] text-gray-400 flex items-center gap-2">
-                    <LocateFixed className="w-3.5 h-3.5 animate-spin text-[#5CC5FA]" />
-                    <span>Automatically acquiring live GPS coordinates...</span>
+                    <LocateFixed className={`w-3.5 h-3.5 text-[#5CC5FA] ${locLoading ? 'animate-spin' : ''}`} />
+                    <span>{locLoading ? 'Acquiring fresh GPS coordinates…' : officeLocation?.enforceLocation ? 'GPS refreshes when you clock in. Use Refresh GPS to check your location.' : 'Office GPS verification is disabled by policy.'}</span>
                   </div>
                 )}
               </div>
@@ -710,11 +796,11 @@ export default function AttendancePage() {
                 <div className="flex items-center justify-between text-gray-300">
                   <span className="flex items-center gap-1.5 font-bold">
                     <Laptop className="w-3.5 h-3.5 text-[#5CC5FA]" />
-                    <span>Hardware Signature</span>
+                    <span>Browser Device</span>
                   </span>
                   <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20 flex items-center gap-1">
                     <Lock className="w-2.5 h-2.5" />
-                    <span>1-Device Locked</span>
+                    <span>{antiProxySettings.enforceSingleDevicePerDay ? 'Device Lock Enabled' : 'Device Lock Off'}</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-gray-400 pt-0.5">
@@ -753,10 +839,10 @@ export default function AttendancePage() {
                           className="w-full bg-[#161F30] border border-[#1F293D] focus:border-amber-400 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none"
                         >
                           <option value="now">Real-Time Machine Clock (Default)</option>
-                          <option value="on_time">Simulate On-Time Arrival (08:50 AM)</option>
-                          <option value="grace">Simulate Grace Window (09:10 AM - 10m late)</option>
-                          <option value="late_35">Simulate Late Arrival (09:35 AM - 35m late)</option>
-                          <option value="half_day">Simulate Half-Day Penalty (10:15 AM - 75m late)</option>
+                          <option value="on_time">At Shift Start (On Time)</option>
+                          <option value="grace">Within the Configured Grace Window</option>
+                          <option value="late_35">Late, Before the Half-Day Threshold</option>
+                          <option value="half_day">At the Half-Day Threshold</option>
                         </select>
                       </div>
 
@@ -797,36 +883,40 @@ export default function AttendancePage() {
 
               {/* Action Buttons */}
               <div className="space-y-2 pt-1">
-                {!todayAttendance?.checkIn ? (
+                {todayAttendance?.override?.type === 'absent' || (todayAttendance?.status === 'absent' && !todayAttendance?.checkIn) ? (
+                  <p className="p-3 rounded-xl bg-rose-500/10 text-xs text-rose-300">Attendance was marked absent. Contact an administrator to restore it.</p>
+                ) : !todayAttendance?.checkIn ? (
                   <button
                     onClick={initiateCheckIn}
-                    disabled={actionLoading}
+                    disabled={actionLoading || loading || !attendanceReady || (antiProxySettings.enforceSingleDevicePerDay && !deviceId)}
                     className="w-full py-3 sm:py-3.5 rounded-xl text-xs sm:text-sm font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all disabled:opacity-50"
                   >
                     <Camera className="w-4 h-4" />
-                    <span>{actionLoading ? 'Verifying & Clocking In...' : 'Verify Selfie & Clock-In'}</span>
+                    <span>{actionLoading ? 'Recording Clock-In…' : antiProxySettings.requireSelfieVerification ? 'Capture Selfie & Clock In' : 'Clock In'}</span>
                   </button>
                 ) : (
                   <div className="space-y-2">
                     <div className="p-3 text-center bg-[#0B0F19] rounded-xl border border-emerald-500/30 text-xs font-semibold text-emerald-400 space-y-1">
                       <div className="flex items-center justify-center gap-1.5 font-bold">
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>Present & Clocked In for Today</span>
+                        <span>{todayAttendance.checkOut ? 'Shift Closed' : 'Check-In Recorded'}</span>
                       </div>
                       <p className="text-[11px] text-gray-400 font-normal">
-                        Shift concludes automatically at standard 06:00 PM office closing time. No check-out required.
+                        {todayAttendance.checkOut ? `${attendanceTime(todayAttendance.checkOut)} · ${todayAttendance.totalWorkHours} hours worked` : `Shift end is ${shiftTime(shift.end)}. Close your shift when leaving; overdue shifts use the scheduled end time.`}
                       </p>
                     </div>
 
-                    {isCEO && (
+                    {!todayAttendance.checkOut && <button onClick={() => void handleCheckOut()} disabled={actionLoading || loading} className="w-full py-3 rounded-xl text-xs font-bold bg-[#5470F4] text-white disabled:opacity-50">{actionLoading ? 'Closing Shift…' : 'Clock Out'}</button>}
+                    {todayAttendance.isSimulated && <p className="text-xs text-amber-300">CEO simulation — GPS evidence is not verified.</p>}
+                    {canManageAttendance && (
                       <button
                         onClick={() => handleMarkAbsent(user?.id || (user as any)?._id, 'Yourself')}
                         disabled={markingAbsentId === (user?.id || (user as any)?._id)}
                         className="w-full py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                        title="CEO override: mark absent"
+                        title="Administrator override: mark absent"
                       >
                         <UserX className="w-3.5 h-3.5" />
-                        <span>{markingAbsentId === (user?.id || (user as any)?._id) ? 'Updating...' : 'Mark Absent Again (CEO Override)'}</span>
+                        <span>{markingAbsentId === (user?.id || (user as any)?._id) ? 'Updating...' : 'Mark Absent (Admin Override)'}</span>
                       </button>
                     )}
                   </div>
@@ -851,7 +941,7 @@ export default function AttendancePage() {
 
             <div className="text-center py-2">
               <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                {(user?.leaveBalances?.casual || 0) + (user?.leaveBalances?.sick || 0) + (user?.leaveBalances?.annual || 0)}
+                {((leaveBalances ?? user?.leaveBalances)?.casual || 0) + ((leaveBalances ?? user?.leaveBalances)?.sick || 0) + ((leaveBalances ?? user?.leaveBalances)?.annual || 0)}
               </span>
               <span className="text-xs text-gray-400 block mt-0.5">Total Days Remaining</span>
             </div>
@@ -859,17 +949,17 @@ export default function AttendancePage() {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#161F30] border border-[#1F293D] text-xs">
                 <span className="text-gray-300 font-medium">Casual Leaves</span>
-                <span className="font-bold text-white font-mono">{user?.leaveBalances?.casual || 0} days</span>
+                <span className="font-bold text-white font-mono">{(leaveBalances ?? user?.leaveBalances)?.casual || 0} days</span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#161F30] border border-[#1F293D] text-xs">
                 <span className="text-gray-300 font-medium">Medical / Sick Leaves</span>
-                <span className="font-bold text-white font-mono">{user?.leaveBalances?.sick || 0} days</span>
+                <span className="font-bold text-white font-mono">{(leaveBalances ?? user?.leaveBalances)?.sick || 0} days</span>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#161F30] border border-[#1F293D] text-xs">
                 <span className="text-gray-300 font-medium">Annual Paid Vacations</span>
-                <span className="font-bold text-white font-mono">{user?.leaveBalances?.annual || 0} days</span>
+                <span className="font-bold text-white font-mono">{(leaveBalances ?? user?.leaveBalances)?.annual || 0} days</span>
               </div>
             </div>
           </div>
@@ -912,6 +1002,15 @@ export default function AttendancePage() {
         </div>
 
         {/* Tab 1: Personal History Table */}
+        {activeTab === 'self' && <div className="flex flex-wrap items-center justify-between gap-3 mb-3 text-xs">
+          <span className="text-gray-400">Page {historyPage} of {Math.max(1, historyPages)}</span>
+          <div className="flex gap-2">
+            <button disabled={loading || historyPage <= 1} onClick={() => setHistoryPage(page => page - 1)} className="px-3 py-2 rounded-xl bg-[#161F30] text-white disabled:opacity-40">Previous</button>
+            <button disabled={loading || historyPage >= historyPages} onClick={() => setHistoryPage(page => page + 1)} className="px-3 py-2 rounded-xl bg-[#161F30] text-white disabled:opacity-40">Next</button>
+          </div>
+        </div>}
+        {!attendanceReady && !loading && <button onClick={() => void fetchAttendanceData()} className="px-3 py-2 mb-3 rounded-xl bg-[#5470F4] text-white text-xs">Retry attendance</button>}
+
         {activeTab === 'self' ? (
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <table className="w-full text-left text-xs min-w-[720px]">
@@ -933,30 +1032,20 @@ export default function AttendancePage() {
                     <tr key={record._id} className="hover:bg-[#161F30]/60 transition-colors">
                       <td className="py-3.5 px-4 font-mono text-gray-300 font-semibold">{record.date}</td>
                       <td className="py-3.5 px-4">
-                        {record.photo ? (
-                          <img
-                            src={record.photo}
-                            alt="Selfie"
-                            onClick={() => setInspectModal({
-                              isOpen: true,
-                              photo: record.photo,
-                              userName: user?.name || 'You',
-                              department: user?.department || '',
-                              checkInTime: record.checkIn ? new Date(record.checkIn).toLocaleTimeString() : '',
-                              distance: record.location?.distanceMeters !== null ? `${record.location?.distanceMeters}m` : 'Verified',
-                              deviceInfo: record.deviceInfo,
-                            })}
-                            className="w-9 h-9 rounded-xl object-cover border border-emerald-400/40 cursor-pointer hover:scale-110 transition-transform shadow"
-                          />
+                        {record.hasPhoto ? (
+                          <button onClick={() => void inspectPhoto(record._id, user?.name || 'You', user?.department || '')}
+                            className="p-2.5 rounded-xl border border-emerald-400/40 text-emerald-300" aria-label="View attendance selfie">
+                            <Camera className="w-4 h-4" />
+                          </button>
                         ) : (
                           <span className="text-gray-500 font-mono text-[10px]">--</span>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-white">
-                        {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
+                        {attendanceTime(record.checkIn)}
                       </td>
                       <td className="py-3.5 px-4 text-gray-400 font-mono">
-                        06:00 PM
+                        {attendanceTime(record.checkOut || record.scheduledCheckOut)}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold capitalize ${record.status === 'present'
@@ -972,7 +1061,7 @@ export default function AttendancePage() {
                         {record.minutesLate > 0 ? (
                           <span className="text-amber-400 font-bold">{record.minutesLate} mins late</span>
                         ) : (
-                          <span className="text-emerald-400">On-Time</span>
+                          <span className="text-gray-400">{record.checkIn ? 'No late mark' : '--'}</span>
                         )}
                       </td>
                       <td className="py-3.5 px-4">
@@ -1011,7 +1100,7 @@ export default function AttendancePage() {
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Late Mins</th>
                   <th className="py-3 px-4">Deduction</th>
-                  <th className="py-3 px-4 text-right">CEO Action</th>
+                  <th className="py-3 px-4 text-right">Admin Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1F293D]">
@@ -1029,44 +1118,27 @@ export default function AttendancePage() {
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
-                      {item.photo ? (
-                        <div
-                          className="relative group inline-block cursor-pointer"
-                          onClick={() => setInspectModal({
-                            isOpen: true,
-                            photo: item.photo,
-                            userName: item.user?.name,
-                            department: item.user?.department,
-                            checkInTime: item.checkIn ? new Date(item.checkIn).toLocaleTimeString() : '',
-                            distance: item.location?.distanceMeters !== null ? `${item.location?.distanceMeters}m` : 'Verified',
-                            deviceInfo: item.deviceInfo,
-                          })}
-                        >
-                          <img
-                            src={item.photo}
-                            alt="Check-in snapshot"
-                            className="w-9 h-9 rounded-xl object-cover border border-purple-400/40 group-hover:border-purple-400 transition-all shadow group-hover:scale-110"
-                          />
-                          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                            <Eye className="w-3 h-3 text-white" />
-                          </div>
-                        </div>
+                      {item.hasPhoto ? (
+                        <button onClick={() => void inspectPhoto(item.recordId, item.user.name, item.user.department)}
+                          className="p-2.5 rounded-xl border border-purple-400/40 text-purple-300" aria-label={`View selfie for ${item.user.name}`}>
+                          <Camera className="w-4 h-4" />
+                        </button>
                       ) : (
                         <span className="text-gray-500 font-mono text-[10px]">No Photo</span>
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-gray-300">{item.user.department}</td>
                     <td className="py-3.5 px-4 font-mono text-white">
-                      {item.checkIn ? new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}
+                      {item.checkIn ? attendanceTime(item.checkIn) : 'Not yet'}
                     </td>
                     <td className="py-3.5 px-4">
-                      {item.checkedIn ? (
+                      {item.deviceLocked ? (
                         <div className="space-y-1">
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
                             <CheckCircle2 className="w-2.5 h-2.5" />
                             <span>1-Device Locked</span>
                           </span>
-                          {item.location?.distanceMeters !== null && (
+                          {item.location?.distanceMeters != null && (
                             <span className="text-[10px] text-gray-400 block font-mono">
                               {item.location.distanceMeters}m from office
                             </span>
@@ -1101,11 +1173,11 @@ export default function AttendancePage() {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      {isCEO ? (
-                        item.checkedIn || ['present', 'late', 'half_day'].includes(item.status) ? (
+                      {canManageAttendance ? (
+                        item.status !== 'absent' && (item.checkedIn || ['present', 'late', 'half_day', 'not_checked_in'].includes(item.status)) ? (
                           <button
-                            onClick={() => handleMarkAbsent(item.user._id, item.user.name)}
-                            disabled={markingAbsentId === item.user._id}
+                            onClick={() => handleMarkAbsent(item.user._id, item.user.name, item.date)}
+                            disabled={!!markingAbsentId}
                             className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
                             title="Mark this employee absent for today"
                           >
@@ -1118,12 +1190,12 @@ export default function AttendancePage() {
                               Marked Absent
                             </span>
                             <button
-                              onClick={() => handleMarkPresent(item.user._id, item.user.name)}
-                              disabled={markingAbsentId === item.user._id}
+                              onClick={() => handleMarkPresent(item.user._id, item.user.name, item.date)}
+                              disabled={!!markingAbsentId}
                               className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
-                              title="Revert back to present"
+                              title="Restore original attendance"
                             >
-                              Revert
+                              {item.override?.type === 'absent' ? 'Restore' : 'Mark Present'}
                             </button>
                           </div>
                         ) : (
@@ -1141,17 +1213,38 @@ export default function AttendancePage() {
         )}
       </div>
 
+      {absentTarget && <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-3 sm:p-4">
+        <div role="dialog" aria-modal="true" aria-label="Confirm absence override" className="my-auto w-full max-w-md space-y-4 rounded-3xl border border-[#1F293D] bg-[#111827] p-5 sm:p-6"
+          onKeyDown={event => {
+            if (event.key === 'Escape' && !overridePending.current) setAbsentTarget(null);
+            if (event.key === 'Tab') {
+              const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+              const first = buttons[0], last = buttons[buttons.length - 1];
+              if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+              else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+          }}>
+          <h3 className="text-base font-bold text-white">Mark {absentTarget.name} absent for {absentTarget.date}?</h3>
+          <p className="text-xs leading-relaxed text-gray-300">This applies a full-day wage deduction. Original check-in, check-out and selfie evidence stay available. An administrator can restore the previous attendance.</p>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button autoFocus disabled={!!markingAbsentId} onClick={() => setAbsentTarget(null)} className="rounded-xl bg-[#161F30] px-4 py-2.5 text-xs font-semibold text-gray-300 disabled:opacity-50">Cancel</button>
+            <button disabled={!!markingAbsentId} onClick={() => void confirmMarkAbsent()} className="rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{markingAbsentId ? 'Updating…' : 'Confirm Absence'}</button>
+          </div>
+        </div>
+      </div>}
+
       {/* MODAL 1: Live Webcam Selfie Capture Viewfinder */}
       {cameraModalOpen && (
         <div className="portal-modal fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-md w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div role="dialog" aria-modal="true" aria-label="Attendance selfie capture" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-md w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <div className="flex items-center gap-2">
                 <Camera className="w-5 h-5 text-purple-400" />
-                <h3 className="text-sm sm:text-base font-bold text-white">Live Identity Verification</h3>
+                <h3 className="text-sm sm:text-base font-bold text-white">Attendance Selfie Capture</h3>
               </div>
               <button
                 onClick={closeSelfieModal}
+                disabled={actionLoading}
                 className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
               >
                 <X className="w-5 h-5" />
@@ -1159,8 +1252,9 @@ export default function AttendancePage() {
             </div>
 
             <p className="text-xs text-gray-300 leading-relaxed">
-              To prevent proxy check-ins, please take a live webcam snapshot to verify your physical presence.
+              To prevent proxy check-ins, please take a live webcam snapshot for an administrator to review.
             </p>
+            {msg?.type === 'error' && <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">{msg.text}</p>}
 
             {/* Video Viewfinder / Captured Photo Preview */}
             <div className="relative aspect-[4/3] bg-[#0B0F19] rounded-2xl overflow-hidden border-2 border-[#1F293D] flex items-center justify-center">
@@ -1194,7 +1288,7 @@ export default function AttendancePage() {
                           onClick={handleSimulateSelfie}
                           className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow"
                         >
-                          Generate Verified Snapshot (CEO Test)
+                          Generate Test Snapshot (CEO)
                         </button>
                       )}
                     </div>
@@ -1236,7 +1330,7 @@ export default function AttendancePage() {
                 <>
                   <button
                     onClick={handleTakeSnapshot}
-                    disabled={cameraStarting || !!cameraError}
+                    disabled={cameraStarting || !!cameraError || !cameraStream}
                     className="flex-1 py-3 rounded-xl text-xs font-bold gradient-btn text-white shadow-lg shadow-[#5470F4]/30 flex items-center justify-center gap-2 hover:scale-[1.01] transition-all disabled:opacity-50"
                   >
                     <Camera className="w-4 h-4" />
@@ -1297,7 +1391,7 @@ export default function AttendancePage() {
               <div className="rounded-2xl overflow-hidden border border-[#1F293D] max-h-72 flex items-center justify-center bg-black">
                 <img
                   src={inspectModal.photo}
-                  alt="Verified Snapshot"
+                  alt="Attendance snapshot"
                   className="w-full h-full object-contain max-h-72"
                 />
               </div>
@@ -1320,7 +1414,7 @@ export default function AttendancePage() {
                 <span className="text-gray-400 text-[10px] uppercase font-bold block">Physical Device Signature</span>
                 <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
                   <span>Device ID:</span>
-                  <span className="text-white font-bold">{inspectModal.deviceInfo?.deviceId || 'Verified Device'}</span>
+                  <span className="text-white font-bold">{inspectModal.deviceInfo?.deviceId || 'No device recorded'}</span>
                 </div>
                 <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
                   <span>Browser / OS:</span>
