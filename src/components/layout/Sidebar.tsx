@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import { usePwa } from '../pwa/PwaProvider';
+import { isMotoZ3, openMotoZ3Drawer } from '../../lib/motoZ3';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -41,9 +42,17 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const [usersCount, setUsersCount] = useState<number | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const menu = useRef<HTMLElement>(null);
+  const [motoZ3, setMotoZ3] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void isMotoZ3(navigator).then(matches => { if (mounted) setMotoZ3(matches); });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
+    if (motoZ3) return openMotoZ3Drawer(menu.current, onCloseMobile);
     const previous = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -57,7 +66,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       desktop.removeEventListener('change', closeOnDesktop);
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
-  }, [mobileOpen, onCloseMobile]);
+  }, [mobileOpen, onCloseMobile, motoZ3]);
 
   useEffect(() => {
     if (!user) return;
@@ -145,6 +154,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
+          data-moto-z3-backdrop={motoZ3 ? true : undefined}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden transition-opacity"
           onClick={onCloseMobile}
         />
@@ -153,6 +163,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       {/* Sidebar Container */}
       <aside
         ref={menu}
+        data-moto-z3={motoZ3 ? true : undefined}
+        data-mobile-open={mobileOpen}
         role={mobileOpen ? 'dialog' : undefined}
         aria-modal={mobileOpen ? true : undefined}
         aria-label="Navigation menu"
@@ -196,7 +208,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         </div>
 
         {/* Keep every menu section reachable even in a short landscape viewport. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="portal-sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* User Persona Card */}
         {user && (
           <div className="px-5 py-4 border-b border-[#1F293D] bg-[#111827]/60">

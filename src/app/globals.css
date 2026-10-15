@@ -168,6 +168,54 @@ body {
   padding-left: var(--safe-left);
 }
 
+/* Moto Z3 only: avoid individual CSS translate properties, dynamic viewport
+   units and blurred compositing layers in older Android browsers. */
+@media (max-width: 1023px) {
+  .portal-sidebar[data-moto-z3='true'] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    width: 18rem;
+    max-width: 100%;
+    height: var(--moto-z3-height, 100vh);
+    z-index: 60;
+    translate: none;
+    transition: none;
+  }
+  .portal-sidebar[data-moto-z3='true'][data-mobile-open='false'] {
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .portal-sidebar[data-moto-z3='true'][data-mobile-open='true'] {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .portal-sidebar[data-moto-z3='true'] > :first-child { flex-shrink: 0; }
+  .portal-sidebar[data-moto-z3='true'] .portal-sidebar-scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  [data-moto-z3-backdrop='true'] {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.8);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    touch-action: manipulation;
+  }
+}
+
 .chat-workspace {
   height: var(--chat-height, calc(100dvh - 20.5rem - var(--safe-top) - var(--safe-bottom)));
   min-height: 18rem;
