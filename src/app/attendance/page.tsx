@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceGet as apiGet, attendancePost as apiPost } from '../../lib/attendanceApi';
-import { COMPANY_TIME_ZONE, attendanceTime, shiftTime, shiftSimulationTimestamp } from '../../lib/attendance';
+import { COMPANY_TIME_ZONE, attendanceTime, shiftTime, shiftSimulationTimestamp, rosterIsCurrent, recordedShiftEnd, attendanceBlocksCheckIn, attendanceExpectation, attendanceDisplay, distanceMeters } from '../../lib/attendance';
+import CompanyAttendanceHistory from '../../components/attendance/CompanyAttendanceHistory';
 import {
   Clock,
   UserCheck,
@@ -52,7 +53,14 @@ export default function AttendancePage() {
   const [simulatedPhoto, setSimulatedPhoto] = useState(false);
 
 
-  const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [dailyAttendance, setTodayAttendance] = useState<any>(null);
+  const [openAttendance, setOpenAttendance] = useState<any>(null);
+  const todayAttendance = openAttendance || dailyAttendance;
+  const todayDisplay = attendanceDisplay(todayAttendance);
+  const [repairRequired, setRepairRequired] = useState<any[]>([]);
+  const [personalSchedule, setPersonalSchedule] = useState<{ expectedCheckIn: string; scheduledCheckOut: string; halfDaySession: string | null } | null>(null);
+  const [rosterReady, setRosterReady] = useState(false);
+  const [attendanceRevision, setAttendanceRevision] = useState(0);
   const [officeLocation, setOfficeLocation] = useState<{
     officeAddress: string;
     latitude: number;
@@ -69,12 +77,13 @@ export default function AttendancePage() {
   });
 
   const [history, setHistory] = useState<any[]>([]);
+  const [historyError, setHistoryError] = useState('');
   const [roster, setRoster] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'self' | 'roster'>('self');
+  const [activeTab, setActiveTab] = useState<'self' | 'roster' | 'company-history'>('self');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [markingAbsentId, setMarkingAbsentId] = useState<string | null>(null);
-  const [absentTarget, setAbsentTarget] = useState<{ id: string; name: string; date: string } | null>(null);
+  const [absentTarget, setAbsentTarget] = useState<{ id: string; name: string; date: string; expectedRecordId: string | null; expectedVersion: number | null } | null>(null);
   const overridePending = useRef(false);
 
   // CEO Simulation & Testing Sandbox State (Only accessible to CEO)
@@ -88,7 +97,7 @@ export default function AttendancePage() {
   const [distanceToOffice, setDistanceToOffice] = useState<number | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string; source?: 'load' } | null>(null);
 
   // Anti-Proxy: Unique Persistent Device ID Fingerprint
   const [deviceId, setDeviceId] = useState<string>('');
@@ -140,18 +149,7 @@ export default function AttendancePage() {
   }, []);
 
   // Haversine distance calculator
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3;
-    const phi1 = (lat1 * Math.PI) / 180;
-    const phi2 = (lat2 * Math.PI) / 180;
-    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c);
-  };
+  const calculateDistance = distanceMeters;
 
   // Obtain real device GPS coordinates automatically
   const acquireLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
@@ -213,6 +211,7 @@ export default function AttendancePage() {
     if (!user?.id) return;
     const sequence = ++fetchSequence.current;
     setLoading(true);
+    setRosterReady(false);
     try {
       const [todayRes, histRes, rosterRes] = await Promise.all([
         apiGet('/attendance/today'),
@@ -223,6 +222,9 @@ export default function AttendancePage() {
       setAttendanceReady(!!todayRes.success);
       if (todayRes.success) {
         setTodayAttendance(todayRes.attendance);
+        setOpenAttendance(todayRes.openAttendance || null);
+        setRepairRequired(todayRes.repairRequired || []);
+        setPersonalSchedule(todayRes.personalSchedule || null);
         setCompanyDay(todayRes.date);
         if (todayRes.leaveBalances) setLeaveBalances(todayRes.leaveBalances);
         setShift({ start: todayRes.shiftStartTime, end: todayRes.shiftEndTime, grace: todayRes.gracePeriodMinutes, half: todayRes.halfDayThresholdMinutes ?? 60, full: todayRes.fullDayAbsentThresholdMinutes ?? 180 });
@@ -232,16 +234,28 @@ export default function AttendancePage() {
         if (todayRes.antiProxySettings) {
           setAntiProxySettings(todayRes.antiProxySettings);
         }
-      }
+      } else { setTodayAttendance(null); setOpenAttendance(null); setPersonalSchedule(null); setCompanyDay(''); }
 
       if (histRes.success) {
+        setHistoryError('');
+        if (historyPage > Math.max(1, histRes.pages)) setHistoryPage(Math.max(1, histRes.pages));
         setHistory(histRes.records);
         setHistoryPages(histRes.pages);
-      }
-      if (rosterRes?.success) setRoster(rosterRes.roster);
+      } else { setHistory([]); setHistoryPages(0); setHistoryError(histRes.message || 'Attendance history unavailable. Please refresh.'); }
+      const currentRoster = rosterIsCurrent(todayRes, rosterRes);
+      setRosterReady(currentRoster);
+      setRoster(currentRoster ? rosterRes!.roster : []);
+      if (todayRes.success && histRes.success) setAttendanceRevision(value => value + 1);
       const failure = [todayRes, histRes, rosterRes].find(result => result && !result.success);
-      if (failure) setMsg({ type: 'error', text: failure.message || 'Unable to load attendance. Please retry.' });
+      if (failure) setMsg({ type: 'error', source: 'load', text: failure.message || 'Unable to load attendance. Please retry.' });
+      else if (canManageAttendance && !currentRoster) setMsg({ type: 'error', source: 'load', text: 'The working day changed while loading the roster. Refresh attendance before using administrator actions.' });
+      else setMsg(previous => previous?.source === 'load' ? null : previous);
     } catch (err) {
+      if (sequence !== fetchSequence.current) return;
+      setAttendanceReady(false); setRosterReady(false); setRoster([]);
+      setHistory([]); setHistoryPages(0);
+      setHistoryError('Attendance history unavailable. Please refresh.');
+      setMsg({ type: 'error', source: 'load', text: 'Attendance is unavailable. Please refresh before using attendance actions.' });
       console.error('Attendance fetch error:', err);
     } finally {
       if (sequence === fetchSequence.current) setLoading(false);
@@ -256,7 +270,7 @@ export default function AttendancePage() {
     return () => { fetchSequence.current++; clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [user?.id, user?.role, historyPage, canManageAttendance]);
 
-  useEffect(() => { setHistoryPage(1); setActiveTab('self'); setTodayAttendance(null); setHistory([]); setRoster([]); setLeaveBalances(null); setAttendanceReady(false); }, [user?.id, user?.role]);
+  useEffect(() => { setHistoryPage(1); setActiveTab('self'); setTodayAttendance(null); setOpenAttendance(null); setPersonalSchedule(null); setRepairRequired([]); setHistory([]); setHistoryError(''); setRoster([]); setRosterReady(false); setLeaveBalances(null); setAttendanceReady(false); }, [user?.id, user?.role]);
   useEffect(() => {
     return () => { cameraOpenRef.current = false; cameraSequence.current++; cameraStreamRef.current?.getTracks().forEach(track => track.stop()); };
   }, []);
@@ -400,7 +414,7 @@ export default function AttendancePage() {
 
   // Trigger check-in initiation
   const initiateCheckIn = () => {
-    if (actionPending.current || loading || !attendanceReady) return;
+    if (actionPending.current || loading || !attendanceReady || attendanceBlocksCheckIn(todayAttendance)) return;
     if (antiProxySettings.requireSelfieVerification) {
       openSelfieModal();
     } else {
@@ -410,7 +424,7 @@ export default function AttendancePage() {
 
   // Submit Check-In Payload
   const executeCheckIn = async (photoPayload: string | null) => {
-    if (actionPending.current || !attendanceReady) return;
+    if (actionPending.current || !attendanceReady || attendanceBlocksCheckIn(todayAttendance)) return;
     actionPending.current = true;
     setActionLoading(true);
     setMsg(null);
@@ -479,7 +493,7 @@ export default function AttendancePage() {
   };
 
   const handleCheckOut = async () => {
-    if (actionPending.current) return;
+    if (actionPending.current || !attendanceReady || todayAttendance?.quarantine?.at) return;
     actionPending.current = true; setActionLoading(true); setMsg(null);
     try {
       const res = await apiPost('/attendance/check-out', {});
@@ -498,18 +512,21 @@ export default function AttendancePage() {
 
   // CEO / Admin Mark Employee Absent (revert attendance)
   const handleMarkAbsent = (targetUserId: string, userName?: string, date = companyDay) => {
-    if (overridePending.current || !canManageAttendance) return;
+    if (overridePending.current || !canManageAttendance || !attendanceReady || loading || date !== companyDay || (targetUserId !== user?.id && !rosterReady)) return;
     if (!date) { setMsg({ type: 'error', text: 'Reload attendance before applying an override.' }); return; }
-    setAbsentTarget({ id: targetUserId, name: userName || 'this employee', date });
+    const selected = targetUserId === user?.id ? dailyAttendance : roster.find(row => row.user._id === targetUserId);
+    if (selected?.quarantine?.at) { setMsg({ type: 'error', text: 'Repair this attendance record in Company Attendance History before applying an override.' }); return; }
+    setAbsentTarget({ id: targetUserId, name: userName || 'this employee', date, ...attendanceExpectation(selected) });
   };
   const confirmMarkAbsent = async () => {
     if (!absentTarget || overridePending.current || !canManageAttendance) return;
+    if (!attendanceReady || loading || absentTarget.date !== companyDay || (absentTarget.id !== user?.id && !rosterReady)) { setAbsentTarget(null); setMsg({ type: 'error', text: 'Attendance changed or the roster is unavailable. Refresh before applying an override.' }); return; }
     const targetUserId = absentTarget.id;
     overridePending.current = true;
     setMarkingAbsentId(targetUserId);
     setMsg(null);
     try {
-      const res = await apiPost('/attendance/mark-absent', { userId: targetUserId, date: absentTarget.date });
+      const res = await apiPost('/attendance/mark-absent', { userId: targetUserId, date: absentTarget.date, expectedRecordId: absentTarget.expectedRecordId, expectedVersion: absentTarget.expectedVersion });
       if (res.success) {
         setMsg({ type: 'success', text: res.message || 'Employee marked absent successfully.' });
         await fetchAttendanceData();
@@ -527,12 +544,14 @@ export default function AttendancePage() {
 
   // CEO / Admin Re-mark Employee Present
   const handleMarkPresent = async (targetUserId: string, userName?: string, date = companyDay) => {
-    if (overridePending.current || !canManageAttendance) return;
+    if (overridePending.current || !canManageAttendance || !attendanceReady || loading || !rosterReady || date !== companyDay) return;
+    if (roster.find(row => row.user._id === targetUserId)?.quarantine?.at) { setMsg({ type: 'error', text: 'Repair this attendance record in Company Attendance History before applying an override.' }); return; }
     overridePending.current = true;
     setMarkingAbsentId(targetUserId);
     setMsg(null);
     try {
-      const res = await apiPost('/attendance/mark-present', { userId: targetUserId, date });
+      const selected = roster.find(row => row.user._id === targetUserId);
+      const res = await apiPost('/attendance/mark-present', { userId: targetUserId, date, ...attendanceExpectation(selected) });
       if (res.success) {
         setMsg({ type: 'success', text: res.message || `${userName || 'Employee'} marked present successfully.` });
         await fetchAttendanceData();
@@ -571,6 +590,7 @@ export default function AttendancePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <button disabled={loading || actionLoading} onClick={() => void fetchAttendanceData()} className="rounded-xl border border-[#1F293D] px-3 py-2.5 text-xs text-gray-300 disabled:opacity-50">Refresh Attendance</button>
           <div className="bg-[#111827] border border-[#1F293D] px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl flex items-center gap-2.5 shadow-sm">
             <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-purple-400 animate-pulse shrink-0" />
             <div className="text-xs">
@@ -600,6 +620,7 @@ export default function AttendancePage() {
           <span className="leading-relaxed">{msg.text}</span>
         </div>
       )}
+      {repairRequired.length > 0 && <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">{repairRequired.length} attendance record(s) need administrator review. {todayAttendance?.quarantine?.at ? 'Clock actions for this record remain unavailable until it is repaired.' : 'Other valid attendance days can still be recorded.'} {canManageAttendance ? 'Review the records in Company Attendance History.' : 'Contact the CEO or Super Admin to review these records.'}</p>}
 
       {/* Main Terminal & Leave Balance Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -620,34 +641,14 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Attendance Day: {companyDay || 'Loading…'}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Attendance Day: {todayAttendance?.date || companyDay || 'Loading…'}</span>
+                  {openAttendance && openAttendance.date !== companyDay && <p className="mt-1 text-xs text-amber-300">Close this earlier open shift before starting the new attendance day.</p>}
                   <div className="flex items-center gap-2 mt-1">
-                    {['on_leave', 'on_holiday'].includes(todayAttendance?.status) ? (
-                      <span className="text-xs font-bold text-blue-300">{todayAttendance.status === 'on_leave' ? 'Approved Leave' : 'Company Holiday'}</span>
-                    ) : todayAttendance?.status === 'absent' ? (
-                      <span className="text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>Marked Absent</span>
-                      </span>
-                    ) : todayAttendance?.status === 'present' && !todayAttendance?.checkIn ? (
-                      <span className="text-xs font-bold text-emerald-300">Marked Present by Administrator</span>
-                    ) : todayAttendance?.checkIn ? (
-                      <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 ${todayAttendance.status === 'present'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : todayAttendance.status === 'half_day'
-                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        }`}>
-                        {todayAttendance.isLate ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                        <span className="capitalize">{todayAttendance.status.replace('_', ' ')}</span>
-                        {todayAttendance.isLate && ` (${todayAttendance.minutesLate}m late)`}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold px-3 py-1 rounded-xl bg-gray-500/20 text-gray-400 border border-gray-500/30">
-                        Not Checked In Yet
-                      </span>
-                    )}
+                    <span className={`text-xs sm:text-sm font-bold px-3 py-1 rounded-xl ${todayDisplay.tone === 'danger' ? 'bg-rose-500/20 text-rose-300' : todayDisplay.tone === 'warning' ? 'bg-amber-500/20 text-amber-300' : todayDisplay.tone === 'info' ? 'bg-blue-500/20 text-blue-300' : todayDisplay.tone === 'success' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-500/20 text-gray-400'}`}>
+                      {todayDisplay.label}
+                    </span>
                   </div>
+                  {personalSchedule?.halfDaySession && (!openAttendance || openAttendance.date === companyDay) && <p className="mt-2 text-xs text-blue-300">Approved {personalSchedule.halfDaySession} leave · Expected arrival {attendanceTime(todayAttendance?.expectedCheckIn || personalSchedule.expectedCheckIn)} · Shift ends {recordedShiftEnd(todayAttendance?.scheduledCheckOut ? todayAttendance : personalSchedule, shift.end)}.</p>}
                 </div>
 
                 {/* Selfie Thumbnail if checked in with photo */}
@@ -686,7 +687,7 @@ export default function AttendancePage() {
                 <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
                   <span className="text-gray-400 text-[10px] block font-semibold">Office Shift End</span>
                   <span className="font-bold text-[#5CC5FA] text-sm">
-                    {shiftTime(shift.end)} (Closing)
+                    {recordedShiftEnd(todayAttendance?.checkIn ? todayAttendance : personalSchedule, shift.end)} (Closing)
                   </span>
                 </div>
               </div>
@@ -697,7 +698,7 @@ export default function AttendancePage() {
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-rose-400 flex items-center gap-1.5">
                       <Coins className="w-3.5 h-3.5" />
-                      <span>Penalty Applied</span>
+                      <span>{todayAttendance.quarantine?.at || todayAttendance.isSimulated ? 'Recorded Amount (Excluded from Totals)' : 'Penalty Applied'}</span>
                     </span>
                     <span className="font-black text-white text-sm">
                       -PKR {todayAttendance.deductionAmount} ({todayAttendance.deductionPercentage}%)
@@ -883,7 +884,10 @@ export default function AttendancePage() {
 
               {/* Action Buttons */}
               <div className="space-y-2 pt-1">
-                {todayAttendance?.override?.type === 'absent' || (todayAttendance?.status === 'absent' && !todayAttendance?.checkIn) ? (
+                {todayAttendance?.financialReviewRequired && !attendanceBlocksCheckIn(todayAttendance) && <p className="text-xs text-amber-300">No check-in was recorded by shift end. You can still record your actual arrival; administrators review any absence deduction.</p>}
+                {todayAttendance?.quarantine?.at ? (
+                  <p role="alert" className="p-3 rounded-xl bg-amber-500/10 text-xs text-amber-300">This attendance record requires administrator repair before clock actions can continue. {canManageAttendance ? 'Review the record in Company Attendance History.' : 'Contact the CEO or Super Admin to review this record.'}</p>
+                ) : attendanceBlocksCheckIn(todayAttendance) ? (
                   <p className="p-3 rounded-xl bg-rose-500/10 text-xs text-rose-300">Attendance was marked absent. Contact an administrator to restore it.</p>
                 ) : !todayAttendance?.checkIn ? (
                   <button
@@ -902,16 +906,16 @@ export default function AttendancePage() {
                         <span>{todayAttendance.checkOut ? 'Shift Closed' : 'Check-In Recorded'}</span>
                       </div>
                       <p className="text-[11px] text-gray-400 font-normal">
-                        {todayAttendance.checkOut ? `${attendanceTime(todayAttendance.checkOut)} · ${todayAttendance.totalWorkHours} hours worked` : `Shift end is ${shiftTime(shift.end)}. Close your shift when leaving; overdue shifts use the scheduled end time.`}
+                        {todayAttendance.checkOut ? `${attendanceTime(todayAttendance.checkOut)} · ${todayAttendance.totalWorkHours} hours worked` : `Shift end is ${recordedShiftEnd(todayAttendance, shift.end)}. Close your shift when leaving; overdue shifts use the recorded scheduled end time.`}
                       </p>
                     </div>
 
-                    {!todayAttendance.checkOut && <button onClick={() => void handleCheckOut()} disabled={actionLoading || loading} className="w-full py-3 rounded-xl text-xs font-bold bg-[#5470F4] text-white disabled:opacity-50">{actionLoading ? 'Closing Shift…' : 'Clock Out'}</button>}
+                    {!todayAttendance.checkOut && <button onClick={() => void handleCheckOut()} disabled={actionLoading || loading || !attendanceReady} className="w-full py-3 rounded-xl text-xs font-bold bg-[#5470F4] text-white disabled:opacity-50">{actionLoading ? 'Closing Shift…' : 'Clock Out'}</button>}
                     {todayAttendance.isSimulated && <p className="text-xs text-amber-300">CEO simulation — GPS evidence is not verified.</p>}
                     {canManageAttendance && (
                       <button
                         onClick={() => handleMarkAbsent(user?.id || (user as any)?._id, 'Yourself')}
-                        disabled={markingAbsentId === (user?.id || (user as any)?._id)}
+                        disabled={markingAbsentId === (user?.id || (user as any)?._id) || loading || !attendanceReady || todayAttendance.date !== companyDay}
                         className="w-full py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 flex items-center justify-center gap-1.5 transition-all shadow-sm"
                         title="Administrator override: mark absent"
                       >
@@ -995,9 +999,13 @@ export default function AttendancePage() {
                     : 'text-gray-400 hover:text-white hover:bg-[#161F30]'
                   }`}
               >
-                Today's Company Roster ({roster.length} Staff)
+              Today's Company Roster ({rosterReady ? `${roster.length} Staff` : loading ? 'Loading…' : 'Unavailable'})
               </button>
             )}
+            {canManageAttendance && <button onClick={() => setActiveTab('company-history')}
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'company-history' ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30' : 'text-gray-400 hover:text-white hover:bg-[#161F30]'}`}>
+              Company Attendance History
+            </button>}
           </div>
         </div>
 
@@ -1054,7 +1062,7 @@ export default function AttendancePage() {
                               ? 'bg-rose-500/20 text-rose-300'
                               : 'bg-amber-500/20 text-amber-300'
                           }`}>
-                          {record.status.replace('_', ' ')}
+                          {record.quarantine?.at ? 'Needs Attendance Repair' : record.status.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-gray-300">
@@ -1070,6 +1078,7 @@ export default function AttendancePage() {
                         ) : (
                           <span className="text-gray-500">PKR 0</span>
                         )}
+                        {(record.quarantine?.at || record.isSimulated) && <span className="mt-1 block text-[10px] text-amber-300">Excluded from totals</span>}
                       </td>
                       <td className="py-3.5 px-4 text-gray-400 max-w-xs truncate">
                         {record.deductionReason || record.notes || 'Normal attendance'}
@@ -1079,13 +1088,15 @@ export default function AttendancePage() {
                 ) : (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-gray-500">
-                      No attendance history recorded yet.
+                      {historyError ? 'Attendance history unavailable. Refresh attendance to retry.' : 'No attendance history recorded yet.'}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+        ) : activeTab === 'company-history' && canManageAttendance ? (
+          <CompanyAttendanceHistory workingDay={companyDay} refreshToken={attendanceRevision} inspectPhoto={inspectPhoto} onChanged={fetchAttendanceData} />
         ) : (
           /* Tab 2: Company Roster View with Anti-Proxy Inspection for CEO */
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
@@ -1159,7 +1170,7 @@ export default function AttendancePage() {
                                 ? 'bg-rose-500/20 text-rose-400'
                                 : 'bg-gray-500/20 text-gray-400'
                         }`}>
-                        {item.status.replace('_', ' ')}
+                        {item.quarantine?.at ? 'Needs Attendance Repair' : item.status.replace('_', ' ')}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-gray-300">
@@ -1174,16 +1185,19 @@ export default function AttendancePage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       {canManageAttendance ? (
-                        item.status !== 'absent' && (item.checkedIn || ['present', 'late', 'half_day', 'not_checked_in'].includes(item.status)) ? (
+                        item.quarantine?.at ? <button className="px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10" onClick={() => setActiveTab('company-history')}>Review in History</button> : item.financialReviewRequired || (item.status !== 'absent' && (item.checkedIn || ['present', 'late', 'half_day', 'not_checked_in'].includes(item.status))) ? (
+                          <>
                           <button
                             onClick={() => handleMarkAbsent(item.user._id, item.user.name, item.date)}
-                            disabled={!!markingAbsentId}
+                            disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
                             className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
                             title="Mark this employee absent for today"
                           >
                             <UserX className="w-3.5 h-3.5 text-rose-400" />
-                            <span>{markingAbsentId === item.user._id ? 'Updating...' : 'Mark Absent'}</span>
+                            <span>{markingAbsentId === item.user._id ? 'Updating...' : item.financialReviewRequired ? 'Review Absence' : 'Mark Absent'}</span>
                           </button>
+                          {item.financialReviewRequired && <button disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay} onClick={() => void handleMarkPresent(item.user._id, item.user.name, item.date)} className="ml-2 px-2.5 py-1.5 text-xs font-semibold text-emerald-300">Mark Present</button>}
+                          </>
                         ) : item.status === 'absent' ? (
                           <div className="inline-flex items-center gap-2">
                             <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-lg border border-rose-500/30">
@@ -1191,7 +1205,7 @@ export default function AttendancePage() {
                             </span>
                             <button
                               onClick={() => handleMarkPresent(item.user._id, item.user.name, item.date)}
-                              disabled={!!markingAbsentId}
+                              disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
                               className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
                               title="Restore original attendance"
                             >
@@ -1225,7 +1239,7 @@ export default function AttendancePage() {
             }
           }}>
           <h3 className="text-base font-bold text-white">Mark {absentTarget.name} absent for {absentTarget.date}?</h3>
-          <p className="text-xs leading-relaxed text-gray-300">This applies a full-day wage deduction. Original check-in, check-out and selfie evidence stay available. An administrator can restore the previous attendance.</p>
+          <p className="text-xs leading-relaxed text-gray-300">This applies the configured absence deduction after approved leave, holidays and days off are considered. Original check-in, check-out and selfie evidence stay available. An administrator can restore the previous attendance.</p>
           <div className="flex flex-wrap justify-end gap-3">
             <button autoFocus disabled={!!markingAbsentId} onClick={() => setAbsentTarget(null)} className="rounded-xl bg-[#161F30] px-4 py-2.5 text-xs font-semibold text-gray-300 disabled:opacity-50">Cancel</button>
             <button disabled={!!markingAbsentId} onClick={() => void confirmMarkAbsent()} className="rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{markingAbsentId ? 'Updating…' : 'Confirm Absence'}</button>
@@ -1238,14 +1252,15 @@ export default function AttendancePage() {
         <div className="portal-modal fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div role="dialog" aria-modal="true" aria-label="Attendance selfie capture" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-md w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <Camera className="w-5 h-5 text-purple-400" />
                 <h3 className="text-sm sm:text-base font-bold text-white">Attendance Selfie Capture</h3>
               </div>
               <button
                 onClick={closeSelfieModal}
+                aria-label="Close selfie capture"
                 disabled={actionLoading}
-                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+                className="shrink-0 p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1373,15 +1388,16 @@ export default function AttendancePage() {
       {/* MODAL 2: Photo & Anti-Proxy Audit Inspector for CEO */}
       {inspectModal?.isOpen && (
         <div className="portal-modal fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-lg w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div role="dialog" aria-modal="true" aria-label="Attendance verification audit" className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 max-w-lg w-full my-auto shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-[#5470F4]" />
                 <h3 className="text-sm sm:text-base font-bold text-white">Attendance Verification Audit</h3>
               </div>
               <button
                 onClick={() => setInspectModal(null)}
-                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
+                aria-label="Close attendance audit"
+                className="shrink-0 p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1396,7 +1412,7 @@ export default function AttendancePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D]">
                   <span className="text-gray-400 text-[10px] block">Employee</span>
                   <span className="font-bold text-white text-sm">{inspectModal.userName}</span>
@@ -1412,12 +1428,12 @@ export default function AttendancePage() {
 
               <div className="p-3 rounded-xl bg-[#161F30] border border-[#1F293D] space-y-1.5 text-xs">
                 <span className="text-gray-400 text-[10px] uppercase font-bold block">Physical Device Signature</span>
-                <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
-                  <span>Device ID:</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between font-mono text-[11px] text-gray-300">
+                  <span className="shrink-0">Device ID:</span>
                   <span className="text-white font-bold">{inspectModal.deviceInfo?.deviceId || 'No device recorded'}</span>
                 </div>
-                <div className="flex items-center justify-between font-mono text-[11px] text-gray-300">
-                  <span>Browser / OS:</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between font-mono text-[11px] text-gray-300">
+                  <span className="shrink-0">Browser / OS:</span>
                   <span className="text-white">{inspectModal.deviceInfo?.browser || 'Chrome/Browser'}</span>
                 </div>
               </div>

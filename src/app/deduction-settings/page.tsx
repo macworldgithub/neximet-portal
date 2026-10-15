@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceGet as apiGet, attendancePut as apiPut, attendancePost as apiPost } from '../../lib/attendanceApi';
 import {
@@ -30,6 +30,7 @@ export default function DeductionSettingsPage() {
   const [rule, setRule] = useState<any>({
     title: 'Neximet Enterprise Attendance & Late Deduction Policy',
     shiftStartTime: '09:00',
+    workingDays: [1, 2, 3, 4, 5],
     shiftEndTime: '18:00',
     gracePeriodMinutes: 15,
     lateThresholdMinutes: 30,
@@ -62,16 +63,24 @@ export default function DeductionSettingsPage() {
   const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 30) : 0));
   const [priorLateCount, setPriorLateCount] = useState(0);
   const [simulationResult, setSimulationResult] = useState<any>(null);
+  const simulatorMaxMinutes = Math.min(1440, Math.max(240, rule.fullDayAbsentThresholdMinutes + 60));
+  useEffect(() => { setTestMinutesLate(value => Math.min(value, simulatorMaxMinutes)); }, [simulatorMaxMinutes]);
 
   // Monthly report state
   const [monthlyReport, setMonthlyReport] = useState<any>(null);
+  const fetchSequence = useRef(0);
+  const sessionVersion = useRef(0);
+  const savePending = useRef(false);
 
   const fetchSettings = async () => {
+    const sequence = ++fetchSequence.current;
     setLoading(true);
+    setPolicyReady(false);
     setSimulationResult(null);
     setMonthlyReport(null);
     try {
       const res = await apiGet('/deductions/rules');
+      if (sequence !== fetchSequence.current) return;
       if (res.success && res.rule) {
         setRule(res.rule);
         setPolicyReady(true);
@@ -80,6 +89,7 @@ export default function DeductionSettingsPage() {
       if (canViewLedger) {
         try {
           const reportRes = await apiGet('/deductions/monthly-report');
+          if (sequence !== fetchSequence.current) return;
           if (reportRes.success) {
             setMonthlyReport(reportRes);
           } else setMsg({ type: 'error', text: reportRes.message || 'Unable to load the deductions ledger.' });
@@ -88,17 +98,24 @@ export default function DeductionSettingsPage() {
         }
       }
     } catch (err) {
+      if (sequence !== fetchSequence.current) return;
       setPolicyReady(false);
       setMsg({ type: 'error', text: 'Unable to load attendance policy. Please retry.' });
       console.error(err);
     } finally {
-      setLoading(false);
+      if (sequence === fetchSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSettings();
-  }, [user?.id, user?.role, canViewLedger]);
+    sessionVersion.current++;
+    savePending.current = false;
+    setSaving(false); setDetectingGps(false); setMsg(null);
+    setTestDailyWage(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 30) : 0));
+    setPriorLateCount(0);
+    void fetchSettings();
+    return () => { fetchSequence.current++; sessionVersion.current++; };
+  }, [user?.id, user?.role, user?.department, canViewLedger]);
 
   // Update simulator whenever test inputs or rule changes
   useEffect(() => {
@@ -119,9 +136,11 @@ export default function DeductionSettingsPage() {
       setMsg({ type: 'error', text: 'Geolocation is not supported by your browser.' });
       return;
     }
+    const session = sessionVersion.current;
     setDetectingGps(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (session !== sessionVersion.current) return;
         setRule((prev: any) => ({
           ...prev,
           officeLocation: {
@@ -134,21 +153,25 @@ export default function DeductionSettingsPage() {
         setMsg({ type: 'success', text: `Captured office GPS coordinates: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}` });
       },
       (err) => {
+        if (session !== sessionVersion.current) return;
         setDetectingGps(false);
         setMsg({ type: 'error', text: `Failed to detect GPS coordinates: ${err.message}` });
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving || loading || !policyReady) return;
+    if (savePending.current || saving || loading || !policyReady || !isCeo) return;
+    const session = sessionVersion.current;
+    savePending.current = true;
     setSaving(true);
     setMsg(null);
 
     try {
       const res = await apiPut('/deductions/rules', rule);
+      if (session !== sessionVersion.current) return;
       if (res.success) {
         setMsg({ type: 'success', text: res.message || 'Attendance policy saved.' });
         setRule(res.rule);
@@ -156,9 +179,10 @@ export default function DeductionSettingsPage() {
         setMsg({ type: 'error', text: res.message || 'Failed to update rule' });
       }
     } catch (err: any) {
+      if (session !== sessionVersion.current) return;
       setMsg({ type: 'error', text: err.message });
     } finally {
-      setSaving(false);
+      if (session === sessionVersion.current) { savePending.current = false; setSaving(false); }
     }
   };
 
@@ -235,6 +259,7 @@ export default function DeductionSettingsPage() {
 
           <form onSubmit={handleSaveRule} className="space-y-5">
             <fieldset disabled={!isCeo || !policyReady || loading} className="space-y-5">
+            <div><p className="mb-2 text-xs font-semibold text-gray-300">Scheduled Working Days</p><div className="flex flex-wrap gap-2">{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((day, index) => <label key={day} className="inline-flex items-center gap-2 rounded-xl border border-[#1F293D] px-3 py-2 text-xs text-gray-300"><input type="checkbox" checked={(rule.workingDays || [1,2,3,4,5]).includes(index)} onChange={event => setRule({ ...rule, workingDays: event.target.checked ? [...(rule.workingDays || [1,2,3,4,5]), index].sort() : (rule.workingDays || [1,2,3,4,5]).filter((value: number) => value !== index) })} />{day}</label>)}</div><p className="mt-2 text-[11px] text-gray-400">Leave duration and missing-attendance history use this calendar and mandatory holidays.</p></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Standard Shift Start Time</label>
@@ -629,7 +654,7 @@ export default function DeductionSettingsPage() {
                 <input
                   type="range"
                   min={0}
-                  max={Math.max(240, rule.fullDayAbsentThresholdMinutes + 60)}
+                  max={simulatorMaxMinutes}
                   step={5}
                   value={testMinutesLate}
                   onChange={(e) => setTestMinutesLate(Number(e.target.value))}
@@ -745,6 +770,7 @@ export default function DeductionSettingsPage() {
                         <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold">
                           {item.totalLateIncidents} times
                         </span>
+                        <span className="mt-1 block text-[10px] text-gray-400">{item.totalAbsentIncidents || 0} absence(s)</span>
                       </td>
                       <td className="py-3.5 px-4 text-gray-300 font-mono font-bold">
                         {item.totalMinutesLate} mins
@@ -753,6 +779,7 @@ export default function DeductionSettingsPage() {
                         <span className="text-rose-400 font-black text-sm">
                           -PKR {item.totalDeductions}
                         </span>
+                        {item.reviewRequiredCount > 0 && <span className="mt-1 block text-[10px] text-amber-300">{item.reviewRequiredCount} unrecorded absence(s) awaiting deduction review</span>}
                       </td>
                       <td className="py-3.5 px-4 text-gray-400 max-w-xs truncate">
                         {item.incidents && item.incidents.length > 0

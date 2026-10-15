@@ -21,19 +21,19 @@ export async function apiFetch<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<{ success: boolean; data?: T; message?: string; [key: string]: any }> {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
-
   try {
+    const token = getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+
     const res = await fetch(url, {
       ...options,
       headers,
@@ -58,9 +58,9 @@ export async function apiFetch<T = any>(
 
     if (!res.ok) {
       return {
+        ...json,
         success: false,
         message: json.message || `Request failed with status ${res.status}`,
-        ...json,
       };
     }
 

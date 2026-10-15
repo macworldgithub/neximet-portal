@@ -206,7 +206,7 @@ export default function EmployeesPage() {
             <button
               key={dept}
               onClick={() => setSelectedDept(dept)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 selectedDept === dept
                   ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                   : 'bg-[#161F30] text-gray-400 hover:text-white hover:bg-[#1E293D]'

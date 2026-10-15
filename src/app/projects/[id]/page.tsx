@@ -684,7 +684,7 @@ export default function ProjectDetailPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2.5 px-4 py-3 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${isActive
+              className={`flex shrink-0 items-center gap-2.5 px-4 py-3 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${isActive
                   ? 'border-[#5470F4] text-white bg-[#161F30]/50 rounded-t-xl'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-[#161F30]/20'
                 }`}
@@ -1761,6 +1761,7 @@ export default function ProjectDetailPage() {
               </h3>
               <button
                 onClick={() => setEditingMember(null)}
+                aria-label="Close resource allocation editor"
                 className="p-1 text-gray-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -1834,6 +1835,7 @@ export default function ProjectDetailPage() {
               </h3>
               <button
                 onClick={() => setEditingTimeLog(null)}
+                aria-label="Close work hours editor"
                 className="p-1 text-gray-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -1921,6 +1923,7 @@ export default function ProjectDetailPage() {
               </h3>
               <button
                 onClick={() => setEditingCred(null)}
+                aria-label="Close credential editor"
                 className="p-1 text-gray-400 hover:text-white"
               >
                 <X className="w-5 h-5" />

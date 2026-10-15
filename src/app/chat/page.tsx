@@ -54,14 +54,22 @@ export default function ChatPage() {
   useEffect(() => {
     const panel = workspace.current;
     if (!panel) return;
+    let revealFrame = 0;
     const resize = () => {
       const nav = document.querySelector<HTMLElement>('nav[aria-label="Mobile Navigation"]');
       const navHeight = nav?.getBoundingClientRect().height || 0;
       const top = panel.getBoundingClientRect().top + window.scrollY;
       const height = window.visualViewport?.height || window.innerHeight;
-      const updateHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pwa-update-height')) || 0;
-      const visibleBottom = height - navHeight - updateHeight - 16;
+      const styles = getComputedStyle(document.documentElement);
+      const noticeHeight = (parseFloat(styles.getPropertyValue('--pwa-update-height')) || 0) + (parseFloat(styles.getPropertyValue('--pwa-install-height')) || 0);
+      const visibleBottom = height - navHeight - noticeHeight - 16;
       panel.style.setProperty('--chat-height', `${Math.max(288, visibleBottom - top)}px`);
+      cancelAnimationFrame(revealFrame);
+      // Short landscape and keyboard viewports scroll the page. Keep the
+      // focused composer above the bottom navigation after that layout changes.
+      if (height < 600 && document.activeElement === composer.current) {
+        revealFrame = requestAnimationFrame(() => composer.current?.scrollIntoView({ block: 'center' }));
+      }
     };
     const observer = new ResizeObserver(resize);
     if (panel.previousElementSibling) observer.observe(panel.previousElementSibling);
@@ -71,6 +79,7 @@ export default function ChatPage() {
     resize();
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(revealFrame);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pwa-layout-change', resize);
       window.visualViewport?.removeEventListener('resize', resize);

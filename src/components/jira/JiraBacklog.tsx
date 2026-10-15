@@ -164,10 +164,11 @@ export default function JiraBacklog({
       {/* Inline Quick Creator */}
       <form
         onSubmit={handleInlineSubmit}
-        className="flex items-center gap-2 p-3 bg-[#0D1322] border border-[#1E293D] focus-within:border-[#5470F4] rounded-2xl shadow-xl transition-all"
+        className="grid grid-cols-1 sm:grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3 bg-[#0D1322] border border-[#1E293D] focus-within:border-[#5470F4] rounded-2xl shadow-xl transition-all"
       >
         <select
           value={inlineType}
+          aria-label="New backlog issue type"
           onChange={(e) => setInlineType(e.target.value as JiraIssue['issueType'])}
           className="text-xs font-bold px-2.5 py-1.5 rounded-xl bg-[#141C30] border border-[#243454] text-[#5CC5FA] outline-none cursor-pointer"
         >
@@ -179,10 +180,11 @@ export default function JiraBacklog({
 
         <input
           type="text"
+          aria-label="New backlog issue title"
           placeholder="+ What needs to be done? (Press Enter to create issue in Backlog)"
           value={inlineTitle}
           onChange={(e) => setInlineTitle(e.target.value)}
-          className="flex-1 bg-transparent text-xs text-white placeholder:text-gray-500 outline-none px-2"
+          className="min-w-0 w-full bg-transparent text-xs text-white placeholder:text-gray-500 outline-none px-2"
         />
 
         <button
@@ -197,8 +199,8 @@ export default function JiraBacklog({
 
       {/* Section 1: Active Sprint / In-Flight Issues */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-[#1E293D]">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-[#1E293D]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#5470F4]" />
             <h3 className="text-sm font-bold text-white">Active Sprint / In-Flight Work</h3>
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#5470F4]/15 text-[#5CC5FA] border border-[#5470F4]/30">
@@ -227,8 +229,8 @@ export default function JiraBacklog({
 
       {/* Section 2: Backlog Section */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-[#1E293D]">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-[#1E293D]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
             <h3 className="text-sm font-bold text-white">Product Backlog</h3>
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-300 border border-slate-500/30">

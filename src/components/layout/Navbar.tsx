@@ -135,21 +135,21 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
     <>
       <header className="portal-header bg-[#0B0F19]/90 backdrop-blur-md border-b border-[#1F293D] fixed top-0 left-0 lg:left-72 right-0 z-30 flex items-center justify-between">
         {/* Left: Mobile Toggle & Real-time clock & shift info */}
-        <div className="flex items-center gap-2.5 sm:gap-6">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-6">
           {/* Mobile Drawer Trigger */}
           {onToggleMobileMenu && (
             <button
               onClick={onToggleMobileMenu}
-              className="lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] border border-[#1F293D] transition-colors"
+              className="portal-header-action shrink-0 lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] border border-[#1F293D] transition-colors"
               aria-label="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
 
-          <div className="portal-clock flex items-center gap-2 sm:gap-3 bg-[#111827] px-3 sm:px-4 py-2 rounded-xl border border-[#1F293D]">
+          <div className="portal-clock min-w-0 overflow-hidden flex items-center gap-2 sm:gap-3 bg-[#111827] px-3 sm:px-4 py-2 rounded-xl border border-[#1F293D]">
             <Clock className="w-4 h-4 text-[#5CC5FA] animate-pulse shrink-0" />
-            <div className="flex flex-col">
+            <div className="min-w-0 flex flex-col">
               <span className="text-xs font-semibold text-white font-mono">{timeStr || '09:00:00 AM'}</span>
               <span className="text-[10px] text-gray-400 hidden xl:block">Company time · Asia/Karachi</span>
             </div>
@@ -157,7 +157,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
         </div>
 
         {/* Right: Notifications, User details & Sign Out */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           <Link href="/chat" aria-label={`Team chat${unreadCount ? `, ${unreadCount} unread messages` : ''}`} className="relative hidden sm:block rounded-xl border border-[#1F293D] bg-[#111827] p-2.5 text-gray-400 hover:text-[#5CC5FA]">
             <MessageSquare size={18} />
             {unreadCount > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-[#5470F4] px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
@@ -167,7 +167,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                className={`relative p-2 sm:p-2.5 rounded-xl border transition-all ${
+                className={`portal-header-action relative p-2 sm:p-2.5 rounded-xl border transition-all ${
                   totalUnread > 0
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
                     : 'bg-[#111827] text-gray-400 border-[#1F293D] hover:text-white hover:border-[#5470F4]/40'
@@ -207,7 +207,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#1F293D]/60 text-[11px]">
                     <button
                       onClick={() => setActiveTab('all')}
-                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                      className={`shrink-0 px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
                         activeTab === 'all'
                           ? 'bg-[#5470F4] text-white shadow-sm'
                           : 'bg-[#0B0F19] text-gray-400 hover:text-white'
@@ -217,7 +217,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                     </button>
                     <button
                       onClick={() => setActiveTab('leaves')}
-                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                      className={`shrink-0 px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
                         activeTab === 'leaves'
                           ? 'bg-amber-500 text-white shadow-sm'
                           : 'bg-[#0B0F19] text-gray-400 hover:text-white'
@@ -227,7 +227,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                     </button>
                     <button
                       onClick={() => setActiveTab('passwords')}
-                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                      className={`shrink-0 px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
                         activeTab === 'passwords'
                           ? 'bg-blue-500 text-white shadow-sm'
                           : 'bg-[#0B0F19] text-gray-400 hover:text-white'
@@ -237,7 +237,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                     </button>
                     <button
                       onClick={() => setActiveTab('other')}
-                      className={`px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                      className={`shrink-0 px-3 py-1 rounded-lg font-semibold whitespace-nowrap transition-all ${
                         activeTab === 'other'
                           ? 'bg-purple-500 text-white shadow-sm'
                           : 'bg-[#0B0F19] text-gray-400 hover:text-white'
@@ -478,7 +478,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
               <button
                 onClick={() => setProfileModalOpen(true)}
-                className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-2xl bg-[#111827] hover:bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 transition-all text-left group cursor-pointer"
+                className="portal-header-action flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-2xl bg-[#111827] hover:bg-[#161F30] border border-[#1F293D] hover:border-[#5470F4]/40 transition-all text-left group cursor-pointer"
                 title="Edit Phone & Password"
               >
                 <div className="text-right hidden xl:block max-w-40">
@@ -490,7 +490,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                   </p>
                 </div>
 
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shadow-sm group-hover:scale-105 transition-transform">
+                <div className="portal-header-avatar w-8 h-8 rounded-xl bg-gradient-to-tr from-[#161F30] to-[#1E293D] border border-[#5470F4]/40 flex items-center justify-center font-bold text-xs text-[#5CC5FA] shadow-sm group-hover:scale-105 transition-transform">
                   {user.name
                     .split(' ')
                     .map((n: string) => n[0])
@@ -506,7 +506,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
             onClick={logout}
             title="Sign Out of Portal"
             aria-label="Sign Out of Portal"
-            className="p-2.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold"
+            className="portal-header-action p-2.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold"
           >
             <LogOut className="w-4 h-4" />
             <span className="hidden md:inline">Sign Out</span>

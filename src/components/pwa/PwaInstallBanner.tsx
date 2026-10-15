@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { usePwa } from './PwaProvider';
 import { Download, X, Sparkles } from 'lucide-react';
 
@@ -15,11 +15,30 @@ const readDismissed = () => {
 const serverDismissed = () => true;
 
 export default function PwaInstallBanner() {
-  const { isInstallable, isInstalled, promptInstall } = usePwa();
+  const { isInstallable, isInstalled, promptInstall, hasUpdateNotice } = usePwa();
   const [dismissed, setDismissed] = useState(false);
   const savedDismissal = useSyncExternalStore(subscribeStorage, readDismissed, serverDismissed);
+  const notice = useRef<HTMLDivElement>(null);
+  const visible = !isInstalled && isInstallable && !dismissed && !savedDismissal && !hasUpdateNotice;
 
-  if (isInstalled || !isInstallable || dismissed || savedDismissal) {
+  useEffect(() => {
+    const element = notice.current;
+    if (!element) return;
+    const resize = () => {
+      const height = Math.ceil(element.getBoundingClientRect().height);
+      document.documentElement.style.setProperty('--pwa-install-height', `${height ? height + 12 : 0}px`);
+      window.dispatchEvent(new Event('pwa-layout-change'));
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(element); resize();
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty('--pwa-install-height');
+      window.dispatchEvent(new Event('pwa-layout-change'));
+    };
+  }, [visible]);
+
+  if (!visible) {
     return null;
   }
 
@@ -31,7 +50,7 @@ export default function PwaInstallBanner() {
   };
 
   return (
-    <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-40 animate-in slide-in-from-bottom-5 duration-300">
+    <div ref={notice} className="pwa-install fixed z-40 animate-in slide-in-from-bottom-5 duration-300">
       <div className="bg-[#111827]/95 backdrop-blur-xl border border-[#5470F4]/40 rounded-3xl p-4 sm:p-5 shadow-2xl shadow-black/80 flex flex-wrap items-center justify-between gap-3.5 relative overflow-hidden">
         {/* Ambient background glow */}
         <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#5470F4]/20 blur-2xl pointer-events-none" />

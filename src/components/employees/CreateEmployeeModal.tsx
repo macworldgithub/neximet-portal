@@ -1,5 +1,7 @@
 'use client';
 
+import { creationCompensation } from '../../lib/employeeCompensation';
+
 import React, { useState } from 'react';
 import { apiPost } from '../../lib/api';
 import {
@@ -91,8 +93,7 @@ export default function CreateEmployeeModal({
         role,
         department,
         designation: designation.trim() || 'Specialist',
-        baseSalary: Number(baseSalary) || 120000,
-        dailyWage: Number(dailyWage) || Math.round((Number(baseSalary) || 120000) / 30),
+        ...creationCompensation(baseSalary, dailyWage),
         phone: phone.trim(),
         joinDate,
         leaveBalances: {
@@ -435,6 +436,7 @@ export default function CreateEmployeeModal({
                     <input
                       type="number"
                       value={casualLeaves}
+                      step={0.5}
                       onChange={(e) => setCasualLeaves(Number(e.target.value))}
                       min={0}
                       className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono text-center"
@@ -445,6 +447,7 @@ export default function CreateEmployeeModal({
                     <input
                       type="number"
                       value={sickLeaves}
+                      step={0.5}
                       onChange={(e) => setSickLeaves(Number(e.target.value))}
                       min={0}
                       className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono text-center"
@@ -455,6 +458,7 @@ export default function CreateEmployeeModal({
                     <input
                       type="number"
                       value={annualLeaves}
+                      step={0.5}
                       onChange={(e) => setAnnualLeaves(Number(e.target.value))}
                       min={0}
                       className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono text-center"

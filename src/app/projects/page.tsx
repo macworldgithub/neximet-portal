@@ -230,7 +230,7 @@ function ProjectsContent() {
             <button
               key={dept.value}
               onClick={() => setSelectedDept(dept.value)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 selectedDept === dept.value
                   ? 'bg-[#5470F4] text-white shadow-md shadow-[#5470F4]/30'
                   : 'bg-[#161F30] text-gray-400 hover:text-white hover:bg-[#1E293D]'
@@ -243,22 +243,24 @@ function ProjectsContent() {
 
         {/* Search & Status Filters & Quick Action */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search by project name, code (e.g. NX-AI-01), or client..."
+              aria-label="Search projects"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-gray-500 outline-none transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-2 sm:w-auto w-full">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:w-auto w-full">
             <select
               value={selectedStatus}
+              aria-label="Filter projects by status"
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="flex-1 sm:flex-none bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-gray-300 outline-none transition-all"
+              className="min-w-0 flex-1 sm:flex-none sm:min-w-[150px] bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-gray-300 outline-none transition-all"
             >
               {statuses.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -383,7 +385,7 @@ function ProjectsContent() {
                 </div>
 
                 {/* Footer: Deadlines, Team Avatars & Action Links */}
-                <div className="border-t border-[#1F293D] mt-5 pt-4 flex items-center justify-between gap-2">
+                <div className="border-t border-[#1F293D] mt-5 pt-4 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs text-gray-400">
                     <Calendar className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                     <span className={daysLeft <= 10 ? 'text-rose-400 font-semibold' : ''}>
@@ -391,7 +393,7 @@ function ProjectsContent() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex max-w-full flex-wrap items-center gap-1.5">
                     {canManageProjects && (
                       <>
                         <button

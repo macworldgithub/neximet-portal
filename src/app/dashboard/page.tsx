@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
-import { apiGet } from '../../lib/api';
-import { attendanceTime } from '../../lib/attendance';
+import { attendanceGet as apiGet } from '../../lib/attendanceApi';
+import { attendanceTime, attendanceDisplay } from '../../lib/attendance';
 import {
   FolderKanban,
   CheckCircle2,
@@ -16,7 +16,6 @@ import {
   Sparkles,
   ChevronRight,
   Users,
-  UserCheck,
   Briefcase,
   Layers,
   ListTodo,
@@ -41,23 +40,37 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const fetchSequence = useRef(0);
 
-  const fetchStats = async () => {
+  const fetchStats = async (background = false) => {
+    if (!user?.id) return;
+    const sequence = ++fetchSequence.current;
+    if (!background) { setLoading(true); setLoadError(''); }
     try {
       const res = await apiGet('/dashboard/stats');
+      if (sequence !== fetchSequence.current) return;
       if (res.success) {
         setStats(res);
-      }
+        setLoadError('');
+      } else { setStats(null); setLoadError(res.message || 'Dashboard data is unavailable. Please retry.'); }
     } catch (err) {
+      if (sequence !== fetchSequence.current) return;
+      setStats(null); setLoadError('Dashboard data is unavailable. Please retry.');
       console.error('Failed to load dashboard metrics:', err);
     } finally {
-      setLoading(false);
+      if (sequence === fetchSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    setStats(null);
+    void fetchStats();
+    const refresh = () => { if (document.visibilityState === 'visible') void fetchStats(true); };
+    const timer = setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh); window.addEventListener('online', refresh);
+    return () => { fetchSequence.current++; clearInterval(timer); window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh); };
+  }, [user?.id, user?.role]);
 
   const formatTime = (isoString?: string | null) => {
     if (!isoString) return '--:--';
@@ -65,6 +78,8 @@ export default function DashboardPage() {
     if (isNaN(d.getTime())) return '--:--';
     return attendanceTime(isoString);
   };
+
+  if (!loading && loadError && !stats) return <div role="alert" className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center"><p className="text-sm text-rose-300">{loadError}</p><button onClick={() => void fetchStats()} className="rounded-xl bg-[#5470F4] px-4 py-3 text-sm font-semibold text-white">Retry Dashboard</button></div>;
 
   if (loading || !stats) {
     return (
@@ -85,11 +100,6 @@ export default function DashboardPage() {
       absentCount: 0,
       todayDeductions: 0,
       monthlyDeductions: 0,
-      deptTotalEmployees: 0,
-      deptCheckedInToday: 0,
-      deptPresentCount: 0,
-      deptLateCount: 0,
-      deptAbsentCount: 0,
       myTodayStatus: null,
       myMonthlyPresentCount: 0,
       myMonthlyLateCount: 0,
@@ -98,7 +108,6 @@ export default function DashboardPage() {
     tasks = { total: 0, active: 0, review: 0, done: 0, todo: 0, myRecentTasks: [] },
     upcomingDeadlines = [],
     pendingLeavesCount = 0,
-    squadMembers = [],
     userScope = {
       isExecutive: user?.role === 'CEO' || user?.role === 'Super Admin',
       isManager: user?.role === 'Project Manager' || user?.role === 'Team Manager',
@@ -111,6 +120,8 @@ export default function DashboardPage() {
   const isExecutive = userScope.isExecutive;
   const isManager = userScope.isManager;
   const isMember = userScope.isMember;
+  const todayDisplay = attendanceDisplay(attendance.myTodayStatus);
+  const toneClasses = { danger: 'bg-rose-500/20 text-rose-300', warning: 'bg-amber-500/20 text-amber-300', info: 'bg-blue-500/20 text-blue-300', success: 'bg-emerald-500/20 text-emerald-300', neutral: 'bg-gray-500/20 text-gray-300' };
 
   const departmentColors: Record<string, string> = {
     'Software Development': '#5470F4',
@@ -135,10 +146,8 @@ export default function DashboardPage() {
     progress: d.avgProgress,
   }));
 
-  const totalLeaveBalance =
-    (user?.leaveBalances?.casual || 0) +
-    (user?.leaveBalances?.sick || 0) +
-    (user?.leaveBalances?.annual || 0);
+  const leaveBalances = attendance.myLeaveBalances || user?.leaveBalances;
+  const totalLeaveBalance = (leaveBalances?.casual || 0) + (leaveBalances?.sick || 0) + (leaveBalances?.annual || 0);
 
   return (
     <div className="space-y-8">
@@ -165,8 +174,8 @@ export default function DashboardPage() {
             {isExecutive
               ? 'Real-time company-wide project delivery, multi-department attendance health, and deduction oversight.'
               : isManager
-              ? `Real-time sprint velocity, squad check-in attendance, and milestone deadlines for the ${user?.department} squad.`
-              : `Your personalized deliverables queue, daily check-in telemetry, monthly salary deduction status, and squad activity.`}
+              ? `Real-time sprint velocity, your attendance, and milestone deadlines for ${user?.department}.`
+              : 'Your personalized deliverables queue, daily check-in, and monthly salary deduction status.'}
           </p>
         </div>
 
@@ -278,7 +287,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* CARD 2: Attendance Today (Company for Exec, Dept for Manager, Personal for Member) */}
+        {/* CARD 2: Company attendance for executives, personal attendance for employees */}
         {isExecutive ? (
           <div className="bg-[#111827] border border-[#1F293D] hover:border-[#10B981]/40 p-5 rounded-2xl transition-all shadow-md group">
             <div className="flex items-center justify-between">
@@ -297,24 +306,6 @@ export default function DashboardPage() {
               <span className="text-rose-400">{attendance.absentCount || 0} Absent</span>
             </div>
           </div>
-        ) : isManager ? (
-          <div className="bg-[#111827] border border-[#1F293D] hover:border-[#10B981]/40 p-5 rounded-2xl transition-all shadow-md group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Squad Attendance Today</span>
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform">
-                <UserCheck className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{attendance.deptCheckedInToday || 0}</span>
-              <span className="text-xs text-gray-400">/ {attendance.deptTotalEmployees || 0} In Squad</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-gray-400 border-t border-[#1F293D] pt-2.5">
-              <span className="text-emerald-400">{attendance.deptPresentCount || 0} On Time</span>
-              <span className="text-amber-400 font-semibold">{attendance.deptLateCount || 0} Late</span>
-              <span className="text-rose-400">{attendance.deptAbsentCount || 0} Away</span>
-            </div>
-          </div>
         ) : (
           <div className="bg-[#111827] border border-[#1F293D] hover:border-[#10B981]/40 p-5 rounded-2xl transition-all shadow-md group">
             <div className="flex items-center justify-between">
@@ -325,19 +316,13 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 flex items-baseline gap-2">
               <span className="text-2xl font-black text-white">
-                {attendance.myTodayStatus?.checkIn ? formatTime(attendance.myTodayStatus.checkIn) : 'Not Clocked In'}
+                {attendance.myTodayStatus?.checkIn ? formatTime(attendance.myTodayStatus.checkIn) : todayDisplay.label}
               </span>
               {attendance.myTodayStatus?.checkIn && (
                 <span
-                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    attendance.myTodayStatus.isLate
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'bg-emerald-500/20 text-emerald-300'
-                  }`}
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${toneClasses[todayDisplay.tone]}`}
                 >
-                  {attendance.myTodayStatus.isLate
-                    ? `Late (+${attendance.myTodayStatus.minutesLate || 0}m)`
-                    : 'On Time'}
+                  {todayDisplay.label}
                 </span>
               )}
             </div>
@@ -418,9 +403,9 @@ export default function DashboardPage() {
             <span className="text-xs font-semibold text-purple-400">Days Balance</span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-gray-400 border-t border-[#1F293D] pt-2.5">
-            <span>Casual: {user?.leaveBalances?.casual || 0}</span>
-            <span>Sick: {user?.leaveBalances?.sick || 0}</span>
-            <span>Annual: {user?.leaveBalances?.annual || 0}</span>
+              <span>Casual: {leaveBalances?.casual || 0}</span>
+              <span>Sick: {leaveBalances?.sick || 0}</span>
+              <span>Annual: {leaveBalances?.annual || 0}</span>
           </div>
         </div>
       </div>
@@ -514,10 +499,9 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        /* Team Member & Manager View: Personal Deliverables / Recent Tasks + Squad Presence */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left (2 cols): My Assigned Deliverables */}
-          <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-6 shadow-xl space-y-4">
+        /* Team Member & Manager View: Personal Deliverables / Recent Tasks */
+        <div className="min-w-0">
+          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -614,77 +598,6 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Right (1 col): Department Squad Attendance Live */}
-          <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#5CC5FA]" />
-                  <span>{user?.department} Squad</span>
-                </h3>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Office Live
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">
-                Colleagues currently active in your specialized team
-              </p>
-            </div>
-
-            <div className="space-y-2.5 my-2 max-h-[300px] overflow-y-auto pr-1">
-              {squadMembers && squadMembers.length > 0 ? (
-                squadMembers.map((member: any) => {
-                  const isCheckedIn = member.todayStatus !== 'not_checked_in' && member.todayStatus !== 'absent' && member.checkIn;
-                  return (
-                    <div
-                      key={member._id}
-                      className="p-2.5 rounded-xl bg-[#161F30]/60 border border-[#1F293D] flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white text-[11px] shrink-0 ${
-                            isCheckedIn ? 'bg-emerald-600' : 'bg-gray-700'
-                          }`}
-                        >
-                          {member.name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-white truncate text-xs">{member.name}</p>
-                          <p className="text-[10px] text-gray-400 truncate">{member.designation || member.role}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        {isCheckedIn ? (
-                          <div className="space-y-0.5">
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                member.isLate ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
-                              }`}
-                            >
-                              {member.isLate ? 'Late' : 'Present'}
-                            </span>
-                            <p className="text-[10px] text-gray-400 font-mono">{formatTime(member.checkIn)}</p>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-gray-500 bg-[#1F293D] px-2 py-0.5 rounded-full">
-                            Not in
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-xs text-gray-400 py-4 text-center">No squad peers in this department</p>
-              )}
-            </div>
-
-            <div className="text-xs text-gray-400 border-t border-[#1F293D] pt-3 flex items-center justify-between">
-              <span>Standard Shift:</span>
-              <span className="font-bold text-white">09:30 AM - 06:00 PM</span>
-            </div>
-          </div>
         </div>
       )}
 

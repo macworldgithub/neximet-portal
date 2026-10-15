@@ -14,6 +14,7 @@ interface PwaContextType {
   isInstalled: boolean;
   isIOS: boolean;
   isOffline: boolean;
+  hasUpdateNotice: boolean;
   promptInstall: () => Promise<void>;
   showIOSGuide: boolean;
   setShowIOSGuide: (val: boolean) => void;
@@ -24,6 +25,7 @@ const PwaContext = createContext<PwaContextType>({
   isInstalled: false,
   isIOS: false,
   isOffline: false,
+  hasUpdateNotice: false,
   promptInstall: async () => {},
   showIOSGuide: false,
   setShowIOSGuide: () => {},
@@ -159,6 +161,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         isInstalled,
         isIOS,
         isOffline,
+        hasUpdateNotice: showUpdate,
         promptInstall,
         showIOSGuide,
         setShowIOSGuide,

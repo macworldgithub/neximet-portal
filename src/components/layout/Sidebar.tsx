@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
@@ -40,6 +40,24 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const [projectsCount, setProjectsCount] = useState<number | null>(null);
   const [usersCount, setUsersCount] = useState<number | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const menu = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    menu.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) onCloseMobile?.(); };
+    desktop.addEventListener('change', closeOnDesktop);
+    closeOnDesktop();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      desktop.removeEventListener('change', closeOnDesktop);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [mobileOpen, onCloseMobile]);
 
   useEffect(() => {
     if (!user) return;
@@ -134,8 +152,22 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
       {/* Sidebar Container */}
       <aside
+        ref={menu}
+        role={mobileOpen ? 'dialog' : undefined}
+        aria-modal={mobileOpen ? true : undefined}
+        aria-label="Navigation menu"
+        onKeyDown={event => {
+          if (!mobileOpen) return;
+          if (event.key === 'Escape') { event.preventDefault(); onCloseMobile?.(); }
+          if (event.key === 'Tab') {
+            const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')).filter(element => element.getBoundingClientRect().width > 0 && getComputedStyle(element).visibility !== 'hidden');
+            const first = controls[0], last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }
+        }}
         className={`portal-sidebar w-72 bg-[#0B0F19] border-r border-[#1F293D] flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
-          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+          mobileOpen ? 'visible translate-x-0 shadow-2xl' : 'invisible -translate-x-full lg:visible lg:translate-x-0'
         }`}
       >
         {/* Brand Header */}
@@ -163,6 +195,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           )}
         </div>
 
+        {/* Keep every menu section reachable even in a short landscape viewport. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* User Persona Card */}
         {user && (
           <div className="px-5 py-4 border-b border-[#1F293D] bg-[#111827]/60">
@@ -195,7 +229,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         )}
 
         {/* Main Navigation */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+        <div className="px-3 py-4 space-y-6">
           <div>
             <p className="px-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">
               Main Management
@@ -209,20 +243,20 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                     key={item.href}
                     href={item.href}
                     onClick={handleLinkClick}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+                    className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
                       isActive
                         ? 'bg-gradient-to-r from-[#5470F4]/20 to-[#5CC5FA]/10 text-white border border-[#5470F4]/30 shadow-sm'
                         : 'text-gray-400 hover:text-gray-100 hover:bg-[#161F30]'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={`w-4 h-4 transition-colors ${
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                         isActive ? 'text-[#5CC5FA]' : 'text-gray-400 group-hover:text-gray-200'
                       }`} />
-                      <span>{item.label}</span>
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{item.label}</span>
                     </div>
                     {item.badge && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-[#1F293D] text-[#5CC5FA] border border-[#5470F4]/20">
+                      <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-md font-semibold bg-[#1F293D] text-[#5CC5FA] border border-[#5470F4]/20">
                         {item.badge}
                       </span>
                     )}
@@ -329,6 +363,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
             </span>
           </div>
           <p className="text-[10px] text-gray-600 mt-2 text-center">© 2026 Neximet Inc. All Rights Reserved.</p>
+        </div>
         </div>
       </aside>
 

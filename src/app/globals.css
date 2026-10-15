@@ -16,6 +16,7 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --pwa-update-height: 0px;
+  --pwa-install-height: 0px;
 }
 
 html {
@@ -32,6 +33,23 @@ html {
 @layer base { img, video, canvas { max-width: 100%; } }
 select { max-width: 100%; }
 
+.portal-auth {
+  min-height: 100dvh;
+  padding-top: max(3rem, var(--safe-top));
+  padding-bottom: calc(3rem + var(--safe-bottom));
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+body:has(.portal-auth) :is(.pwa-update, .pwa-install) {
+  /* Login has no app navigation. Keep notices in page flow so credentials and
+     the sign-in action remain reachable even on a very short screen. */
+  position: relative;
+  inset: auto;
+  width: calc(100% - max(1.5rem, var(--safe-left)) - max(1.5rem, var(--safe-right)));
+  max-width: 28rem;
+  margin: 0 auto max(1rem, var(--safe-bottom));
+}
+
 .portal-modal {
   padding-top: max(1rem, var(--safe-top));
   padding-bottom: max(1rem, var(--safe-bottom));
@@ -40,7 +58,7 @@ select { max-width: 100%; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.portal-modal > div {
+.portal-modal > :is(div, form) {
   min-width: 0;
   max-height: calc(100dvh - max(1rem, var(--safe-top)) - max(1rem, var(--safe-bottom)));
   overflow-y: auto;
@@ -49,25 +67,27 @@ select { max-width: 100%; }
 .portal-modal form, .portal-modal [class~='flex-1'] { min-height: 0; }
 .portal-modal [class~='justify-end'] { flex-wrap: wrap; }
 .portal-modal button { max-width: 100%; }
-.pwa-update {
+.pwa-update, .pwa-install {
   bottom: calc(5.5rem + var(--safe-bottom));
   left: max(0.75rem, var(--safe-left));
   right: max(0.75rem, var(--safe-right));
 }
 @media (min-width: 640px) {
-  .pwa-update { left: auto; right: max(1.5rem, var(--safe-right)); max-width: 28rem; }
+  .pwa-update, .pwa-install { left: auto; right: max(1.5rem, var(--safe-right)); max-width: 28rem; }
 }
-@media (min-width: 1024px) { .pwa-update { bottom: max(1.5rem, var(--safe-bottom)); } }
+@media (min-width: 1024px) { .pwa-update, .pwa-install { bottom: max(1.5rem, var(--safe-bottom)); } }
 @media (max-width: 1023px) {
   /* Keep deployment notices out of the way of the mobile keyboard and chat draft. */
-  body:has(.chat-workspace textarea:focus) .pwa-update { display: none; }
+  body:has(.chat-workspace textarea:focus) :is(.pwa-update, .pwa-install) { display: none; }
 }
 @media (max-height: 600px) {
   .pwa-update { grid-template-columns: minmax(0, 1fr) auto; padding: 0.5rem; gap: 0.5rem; }
   .pwa-update > div { display: none; }
+  .pwa-install p { display: none; }
+  body:has(.portal-main input:focus, .portal-main textarea:focus, .portal-auth input:focus) :is(.pwa-update, .pwa-install) { display: none; }
 }
 
-@media (pointer: coarse), (max-width: 1023px) {
+@media (any-pointer: coarse), (max-width: 1023px) {
   button, a[aria-label], .portal-header a, .portal-sidebar a {
     min-height: 44px;
     min-width: 44px;
@@ -78,6 +98,12 @@ select { max-width: 100%; }
   }
   label:has(input[type='checkbox']), label:has(input[type='radio']) { min-height: 44px; }
   input:not([type='checkbox']):not([type='radio']):not([type='range']), select { min-height: 44px; }
+  input[type='range'] { min-height: 44px; }
+  input[type='checkbox'] + label, input[type='radio'] + label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 @media (max-width: 380px) {
   .portal-header { padding-inline: 0.5rem; gap: 0.25rem; }
@@ -85,7 +111,13 @@ select { max-width: 100%; }
   .portal-clock { padding-inline: 0.5rem; }
   .portal-clock svg { display: none; }
 }
-.portal-clock span:first-child { white-space: nowrap; }
+.portal-clock span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 639px) {
+  /* Preserve every account action when the user enlarges browser text. */
+  .portal-header-action { width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
+  .portal-header-action > svg { width: 20px; height: 20px; }
+  .portal-header-avatar { width: 32px; height: 32px; }
+}
 @media (max-width: 340px) {
   .portal-clock { display: none; }
 }
@@ -105,7 +137,7 @@ body {
 }
 
 /* Keep text entry readable without triggering iOS focus zoom. */
-@media (max-width: 767px), (pointer: coarse) {
+@media (max-width: 767px), (any-pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']):not([type='range']),
   select,
   textarea {
@@ -123,7 +155,7 @@ body {
 
 .portal-main {
   padding-top: calc(6rem + var(--safe-top));
-  padding-bottom: calc(6rem + var(--safe-bottom) + var(--pwa-update-height));
+  padding-bottom: calc(6rem + var(--safe-bottom) + var(--pwa-update-height) + var(--pwa-install-height));
   padding-left: max(0.875rem, var(--safe-left));
   padding-right: max(0.875rem, var(--safe-right));
 }
@@ -165,7 +197,12 @@ body {
     padding-left: max(2rem, var(--safe-left));
     padding-right: max(2rem, var(--safe-right));
   }
-  .portal-main { padding-bottom: calc(2rem + var(--safe-bottom) + var(--pwa-update-height)); }
+  .portal-main { padding-bottom: calc(2rem + var(--safe-bottom) + var(--pwa-update-height) + var(--pwa-install-height)); }
+}
+
+.portal-mobile-nav {
+  padding-left: max(0.5rem, var(--safe-left));
+  padding-right: max(0.5rem, var(--safe-right));
 }
 
 /* Custom modern scrollbar */

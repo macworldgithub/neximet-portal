@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { apiPut } from '../../lib/api';
+import { attendancePut as apiPut } from '../../lib/attendanceApi';
+import { employeeCompensationChanges } from '../../lib/employeeCompensation';
 import {
   X,
   UserCheck,
@@ -76,6 +77,7 @@ export default function EditEmployeeModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || success) return;
     setError('');
     setLoading(true);
 
@@ -86,13 +88,7 @@ export default function EditEmployeeModal({
         department,
         designation: designation.trim(),
         phone: phone.trim(),
-        baseSalary: baseSalary !== '' ? Number(baseSalary) : null,
-        dailyWage: dailyWage !== '' ? Number(dailyWage) : null,
-        leaveBalances: {
-          casual: Number(casualLeaves),
-          sick: Number(sickLeaves),
-          annual: Number(annualLeaves),
-        },
+        ...employeeCompensationChanges(employee, { baseSalary, dailyWage, leaveBalances: { casual: casualLeaves, sick: sickLeaves, annual: annualLeaves } }),
         reportsTo: reportsTo ? reportsTo : null,
       };
 
@@ -311,6 +307,8 @@ export default function EditEmployeeModal({
                 <input
                   type="number"
                   value={casualLeaves}
+                  min={0}
+                  step={0.5}
                   onChange={(e) => setCasualLeaves(Number(e.target.value))}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2.5 text-xs text-white outline-none font-mono"
                 />
@@ -321,6 +319,8 @@ export default function EditEmployeeModal({
                 <input
                   type="number"
                   value={sickLeaves}
+                  min={0}
+                  step={0.5}
                   onChange={(e) => setSickLeaves(Number(e.target.value))}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2.5 text-xs text-white outline-none font-mono"
                 />
@@ -331,6 +331,8 @@ export default function EditEmployeeModal({
                 <input
                   type="number"
                   value={annualLeaves}
+                  min={0}
+                  step={0.5}
                   onChange={(e) => setAnnualLeaves(Number(e.target.value))}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2.5 text-xs text-white outline-none font-mono"
                 />
