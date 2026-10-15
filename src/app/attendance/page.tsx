@@ -623,9 +623,9 @@ export default function AttendancePage() {
       {repairRequired.length > 0 && <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">{repairRequired.length} attendance record(s) need administrator review. {todayAttendance?.quarantine?.at ? 'Clock actions for this record remain unavailable until it is repaired.' : 'Other valid attendance days can still be recorded.'} {canManageAttendance ? 'Review the records in Company Attendance History.' : 'Contact the CEO or Super Admin to review these records.'}</p>}
 
       {/* Main Terminal & Leave Balance Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Interactive Check-In / Check-Out Station */}
-        <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-6 min-w-0">
+        <div className="lg:col-span-2 bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-6">
           <div className="flex items-center justify-between border-b border-[#1F293D] pb-4">
             <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-[#5470F4]" />
@@ -931,7 +931,7 @@ export default function AttendancePage() {
         </div>
 
         {/* Holidays & Leaves Left Balance Card */}
-        <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-5 flex flex-col justify-between min-w-0">
+        <div className="bg-[#111827] border border-[#1F293D] rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-[#1F293D] pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">

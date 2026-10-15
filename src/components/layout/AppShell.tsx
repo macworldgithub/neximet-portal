@@ -64,7 +64,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         mobileOpen={mobileMenuOpen}
         onCloseMobile={closeMobileMenu}
       />
-      <div className="flex-1 lg:ml-72 flex flex-col min-h-screen min-w-0 w-auto overflow-x-hidden">
+      <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden min-w-0">
         <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
         <main className="portal-main flex-1 max-w-7xl w-full mx-auto">
           {children}
@@ -73,7 +73,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <MobileBottomNav
         mobileMenuOpen={mobileMenuOpen}
         onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
-        onCloseMenu={closeMobileMenu}
       />
       <PwaInstallBanner />
     </div>
