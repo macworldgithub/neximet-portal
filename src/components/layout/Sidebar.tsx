@@ -47,15 +47,24 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     const previous = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    menu.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    try {
+      menu.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    } catch {
+      // Ignore if preventScroll is unsupported
+    }
     const desktop = window.matchMedia('(min-width: 1024px)');
-    const closeOnDesktop = () => { if (desktop.matches) onCloseMobile?.(); };
+    const closeOnDesktop = (e: MediaQueryListEvent) => { if (e.matches) onCloseMobile?.(); };
     desktop.addEventListener('change', closeOnDesktop);
-    closeOnDesktop();
     return () => {
       document.body.style.overflow = previousOverflow;
       desktop.removeEventListener('change', closeOnDesktop);
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      if (previous?.isConnected) {
+        try {
+          previous.focus({ preventScroll: true });
+        } catch {
+          // Ignore
+        }
+      }
     };
   }, [mobileOpen, onCloseMobile]);
 
@@ -145,8 +154,22 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+          role="button"
+          tabIndex={0}
+          aria-label="Close Sidebar"
+          aria-hidden="false"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 transition-opacity cursor-pointer touch-manipulation"
           onClick={onCloseMobile}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            onCloseMobile?.();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onCloseMobile?.();
+            }
+          }}
         />
       )}
 
@@ -167,7 +190,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           }
         }}
         className={`portal-sidebar w-72 bg-[#0B0F19] border-r border-[#1F293D] flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
-          mobileOpen ? 'visible translate-x-0 shadow-2xl' : 'invisible -translate-x-full lg:visible lg:translate-x-0'
+          mobileOpen
+            ? 'portal-sidebar-open visible translate-x-0 shadow-2xl pointer-events-auto'
+            : 'invisible -translate-x-full pointer-events-none lg:visible lg:translate-x-0 lg:pointer-events-auto'
         }`}
       >
         {/* Brand Header */}
@@ -183,11 +208,18 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
             </span>
           </Link>
 
-          {/* Close button on mobile */}
+          {/* Close button on mobile or when drawer is explicitly open */}
           {onCloseMobile && (
             <button
+              type="button"
               onClick={onCloseMobile}
-              className="lg:hidden p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                onCloseMobile();
+              }}
+              className={`p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                mobileOpen ? 'flex' : 'lg:hidden'
+              }`}
               aria-label="Close Sidebar"
             >
               <X className="w-5 h-5" />

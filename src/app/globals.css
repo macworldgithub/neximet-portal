@@ -23,6 +23,9 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
 
 /* Grid and flex children must be able to shrink around long names and URLs. */
@@ -154,18 +157,54 @@ body {
 }
 
 .portal-main {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding-top: calc(6rem + var(--safe-top));
   padding-bottom: calc(6rem + var(--safe-bottom) + var(--pwa-update-height) + var(--pwa-install-height));
   padding-left: max(0.875rem, var(--safe-left));
   padding-right: max(0.875rem, var(--safe-right));
 }
 
+/* Sidebar positioning with bulletproof cross-browser support (Android 8+, iOS, Safari, Chrome) */
 .portal-sidebar {
   max-width: 100%;
   height: 100dvh;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
+  transition: transform 0.3s ease-in-out, visibility 0.3s ease-in-out;
+  -webkit-transition: -webkit-transform 0.3s ease-in-out, visibility 0.3s ease-in-out;
+  will-change: transform;
+}
+
+/* On mobile screens (< 1024px), sidebar is a slide-in drawer.
+   When closed, it MUST be strictly off-screen, invisible, and unclickable
+   so it cannot cover content or block buttons on mobile devices like Moto Z3. */
+@media (max-width: 1023px) {
+  .portal-sidebar:not(.portal-sidebar-open) {
+    transform: translateX(-100%) !important;
+    -webkit-transform: translateX(-100%) !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .portal-sidebar.portal-sidebar-open {
+    transform: translateX(0) !important;
+    -webkit-transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* On desktop (>= 1024px), sidebar is permanently docked at left 0 */
+@media (min-width: 1024px) {
+  .portal-sidebar {
+    transform: translateX(0) !important;
+    -webkit-transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
 }
 
 .chat-workspace {

@@ -14,15 +14,25 @@ import { useChat } from '../../context/ChatContext';
 
 interface MobileBottomNavProps {
   onToggleMenu: () => void;
+  onCloseMenu?: () => void;
   mobileMenuOpen?: boolean;
 }
 
 export default function MobileBottomNav({
   onToggleMenu,
+  onCloseMenu,
   mobileMenuOpen,
 }: MobileBottomNavProps) {
   const pathname = usePathname();
   const { unreadCount } = useChat();
+
+  const handleLinkClick = () => {
+    if (onCloseMenu) {
+      onCloseMenu();
+    } else if (mobileMenuOpen) {
+      onToggleMenu();
+    }
+  };
 
   const navItems = [
     {
@@ -63,7 +73,8 @@ export default function MobileBottomNav({
               <Link
                 key={item.href}
                 href={item.href}
-                className="relative -top-2 flex flex-col items-center group cursor-pointer"
+                onClick={handleLinkClick}
+                className="relative -top-2 flex flex-col items-center group cursor-pointer min-h-[44px] min-w-[44px] justify-center"
               >
                 <div
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-lg ${
@@ -89,7 +100,8 @@ export default function MobileBottomNav({
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center py-1 px-3 rounded-2xl transition-all relative ${
+              onClick={handleLinkClick}
+              className={`flex flex-col items-center py-1 px-3 rounded-2xl transition-all relative cursor-pointer min-h-[44px] min-w-[44px] justify-center ${
                 isActive
                   ? 'text-[#5CC5FA]'
                   : 'text-gray-400 hover:text-gray-200'
@@ -111,11 +123,13 @@ export default function MobileBottomNav({
 
         {/* Menu Toggle Button */}
         <button
+          type="button"
           onClick={onToggleMenu}
-          className={`flex flex-col items-center py-1 px-3 rounded-2xl transition-all ${
+          className={`flex flex-col items-center py-1 px-3 rounded-2xl transition-all cursor-pointer min-h-[44px] min-w-[44px] justify-center ${
             mobileMenuOpen ? 'text-[#5CC5FA]' : 'text-gray-400 hover:text-gray-200'
           }`}
-          aria-label="Open Sidebar Menu"
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
         >
           <Menu className={`w-5 h-5 transition-transform ${mobileMenuOpen ? 'scale-110 text-[#5CC5FA]' : ''}`} />
           <span className={`text-[10px] mt-1 font-semibold ${mobileMenuOpen ? 'text-white' : 'text-gray-400'}`}>

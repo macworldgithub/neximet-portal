@@ -139,8 +139,9 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
           {/* Mobile Drawer Trigger */}
           {onToggleMobileMenu && (
             <button
+              type="button"
               onClick={onToggleMobileMenu}
-              className="portal-header-action shrink-0 lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] border border-[#1F293D] transition-colors"
+              className="portal-header-action shrink-0 lg:hidden p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] border border-[#1F293D] transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Open Navigation Menu"
             >
               <Menu className="w-5 h-5" />
