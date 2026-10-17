@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/generate-service-worker.mjs && next dev",
-    "build": "node scripts/generate-service-worker.mjs && next build",
+    "build": "node scripts/check-production-env.mjs && node scripts/generate-service-worker.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test:communication": "node --test scripts/communication-viewport.test.mjs scripts/chat.test.mjs scripts/moto-z3.test.mjs",
@@ -12,9 +12,13 @@
     "test:ai": "node --test scripts/ai.test.mjs",
     "test:ai:ui": "playwright test --config=playwright.ai.config.mjs",
     "test:attendance": "node --test scripts/attendance.test.mjs scripts/attendance-api.test.mjs",
-    "test:payroll:ui": "playwright test --config=playwright.payroll.config.mjs"
+    "test:payroll:ui": "playwright test --config=playwright.payroll.config.mjs",
+    "check:production": "node scripts/check-production-env.mjs",
+    "test:production": "node --test scripts/production.test.mjs"
   },
+  "engines": { "node": "22.x" },
   "dependencies": {
+    "@next/env": "16.3.5",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.47.0",

@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../../context/AuthContext';
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiUpload, BASE_URL } from '../../../lib/api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiUpload } from '../../../lib/api';
+import { downloadScopeDocument } from '../../../lib/projectDocuments';
 import JiraBoard from '../../../components/jira/JiraBoard';
 import JiraBacklog from '../../../components/jira/JiraBacklog';
 import JiraRoadmap from '../../../components/jira/JiraRoadmap';
@@ -97,7 +98,16 @@ export default function ProjectDetailPage() {
   const [scopeFile, setScopeFile] = useState<File | null>(null);
   const [scopeSummary, setScopeSummary] = useState('');
   const [uploadingScope, setUploadingScope] = useState(false);
+  const [scopeUploadError, setScopeUploadError] = useState('');
   const [deletingScopeId, setDeletingScopeId] = useState<string | null>(null);
+  const [scopeDownloadError, setScopeDownloadError] = useState('');
+  const [downloadingScope, setDownloadingScope] = useState<string | null>(null);
+  const handleScopeDownload = async (fileUrl: string, filename: string) => {
+    setScopeDownloadError(''); setDownloadingScope(fileUrl);
+    try { await downloadScopeDocument(fileUrl, filename); }
+    catch (error) { setScopeDownloadError(error instanceof Error ? error.message : 'Unable to download this document.'); }
+    finally { setDownloadingScope(null); }
+  };
 
   // Time log state
   const [showLogTimeModal, setShowLogTimeModal] = useState(false);
@@ -353,6 +363,8 @@ export default function ProjectDetailPage() {
   const handleUploadScope = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scopeFile) return;
+    setScopeUploadError('');
+    if (scopeFile.size > 10 * 1024 * 1024) { setScopeUploadError('Choose a document no larger than 10 MB.'); return; }
 
     setUploadingScope(true);
     const formData = new FormData();
@@ -367,8 +379,9 @@ export default function ProjectDetailPage() {
         setScopeTitle('');
         setScopeSummary('');
         fetchProjectData();
-      }
+      } else setScopeUploadError(res.message || 'Unable to upload this document.');
     } catch (err) {
+      setScopeUploadError(err instanceof Error ? err.message : 'Unable to upload this document.');
       console.error(err);
     } finally {
       setUploadingScope(false);
@@ -871,6 +884,7 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
+                {scopeDownloadError && <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{scopeDownloadError}</p>}
                 {scopeDocsList.length > 0 ? (
                   <div className="space-y-4">
                     {scopeDocsList.map((doc: any, index: number) => {
@@ -922,15 +936,15 @@ export default function ProjectDetailPage() {
                             </div>
 
                             <div className="flex items-center gap-2 self-end sm:self-start flex-shrink-0">
-                              <a
-                                href={`${BASE_URL}${doc.fileUrl}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                disabled={downloadingScope === doc.fileUrl}
+                                onClick={() => void handleScopeDownload(doc.fileUrl, doc.originalName || doc.fileName)}
                                 className="px-3.5 py-2 rounded-xl text-xs font-semibold gradient-btn text-white flex items-center gap-1.5 shadow-md shadow-[#5470F4]/20 hover:scale-[1.02] transition-all"
                               >
                                 <Download className="w-3.5 h-3.5" />
-                                <span>View / Download</span>
-                              </a>
+                                <span>{downloadingScope === doc.fileUrl ? 'Downloading…' : 'Download'}</span>
+                              </button>
 
                               {hasRole('CEO', 'Project Manager') && (
                                 <button
@@ -1030,7 +1044,8 @@ export default function ProjectDetailPage() {
                     <span className="text-xs font-bold text-white block truncate px-2">
                       {scopeFile ? scopeFile.name : 'Click to select document'}
                     </span>
-                    <span className="text-[10px] text-gray-500 mt-1 block">PDF, DOC, DOCX up to 15MB</span>
+                    <span className="text-[10px] text-gray-500 mt-1 block">PDF, DOC, DOCX up to 10MB</span>
+                    {scopeUploadError && <p role="alert" className="mt-2 text-xs text-rose-300">{scopeUploadError}</p>}
                   </div>
 
                   <div>
