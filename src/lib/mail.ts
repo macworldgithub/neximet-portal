@@ -6,6 +6,14 @@ export interface MailSettings {
   serverConfigured: boolean;
 }
 export interface MailAddress { name: string; address: string }
+export interface MailAttachment {
+  filename: string;
+  size: number;
+  contentType?: string;
+  inline?: boolean;
+  isImage?: boolean;
+  preview?: { dataUrl: string; width: number; height: number };
+}
 export interface MailMessage {
   uid: number;
   subject: string;
@@ -16,6 +24,6 @@ export interface MailMessage {
   date: string | null;
   seen: boolean;
   text?: string;
-  attachments?: { filename: string; size: number }[];
+  attachments?: MailAttachment[];
 }
 export const addressLabel = (addresses: MailAddress[]) => addresses.map(item => item.name ? `${item.name} <${item.address}>` : item.address).join(', ');
