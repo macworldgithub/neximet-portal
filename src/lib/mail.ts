@@ -11,6 +11,7 @@ export interface MailAttachment {
   size: number;
   contentType?: string;
   inline?: boolean;
+  renderedInline?: boolean;
   isImage?: boolean;
   preview?: { dataUrl: string; width: number; height: number };
 }
@@ -24,6 +25,8 @@ export interface MailMessage {
   date: string | null;
   seen: boolean;
   text?: string;
+  html?: string;
+  hasRemoteImages?: boolean;
   attachments?: MailAttachment[];
 }
 export const addressLabel = (addresses: MailAddress[]) => addresses.map(item => item.name ? `${item.name} <${item.address}>` : item.address).join(', ');

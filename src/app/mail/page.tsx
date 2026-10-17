@@ -9,6 +9,7 @@ import { addressLabel, type MailMessage, type MailSettings as MailSettingsType }
 import MailSettings, { mailButton } from '../../components/mail/MailSettings';
 import MailComposer, { type MailDraft } from '../../components/mail/MailComposer';
 import MailAttachments from '../../components/mail/MailAttachments';
+import MailBody from '../../components/mail/MailBody';
 
 function dateLabel(value: string | null) {
   if (!value) return '';
@@ -136,12 +137,12 @@ function Mailbox() {
               <div className="flex items-center gap-1"><button className="communication-icon" disabled={reading} aria-label="Reply to email" title="Reply to email" onClick={reply}><Reply size={19} /></button><button className="communication-icon hidden md:inline-flex" aria-label={readerExpanded ? 'Show message list' : 'Expand email'} title={readerExpanded ? 'Show message list' : 'Expand email'} onClick={() => setReaderExpanded(value => !value)}>{readerExpanded ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button></div>
             </header>
             <div className="mail-message-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 lg:px-10">
-              <div className="mx-auto max-w-5xl">
+              <div className="min-w-0">
                 <h2 className="break-words text-xl font-semibold sm:text-2xl">{selected.subject}</h2>
                 <div className="mt-4 space-y-1 break-words border-b border-[#29344a] pb-4 text-xs leading-relaxed text-gray-400"><p>From: {addressLabel(selected.from)}</p><p>To: {addressLabel(selected.to)}</p>{!!selected.cc?.length && <p>Cc: {addressLabel(selected.cc)}</p>}<p>{dateLabel(selected.date)}</p></div>
                 {reading ? <div role="status" className="flex items-center gap-2 py-10 text-gray-400"><Loader2 size={16} className="animate-spin" />Opening message…</div> : <>
-                  <div className="whitespace-pre-wrap break-words py-6 text-[15px] leading-7 text-gray-200 [overflow-wrap:anywhere]">{selected.text || (selected.attachments?.some(item => item.isImage || item.preview) ? '' : 'This message has no text content.')}</div>
-                  <MailAttachments key={`${folder}:${selected.uid}`} attachments={selected.attachments || []} />
+                  <MailBody key={`${folder}:${selected.uid}`} html={selected.html} text={selected.text} hasRemoteImages={selected.hasRemoteImages} />
+                  <MailAttachments key={`${folder}:${selected.uid}`} attachments={(selected.attachments || []).filter(item => !item.renderedInline)} />
                   <button className={`${mailButton} mb-6`} onClick={reply}><Reply size={16} />Reply</button>
                 </>}
               </div>
