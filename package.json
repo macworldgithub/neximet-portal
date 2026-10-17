@@ -16,7 +16,7 @@
     "check:production": "node scripts/check-production-env.mjs",
     "test:production": "node --test scripts/production.test.mjs"
   },
-  "engines": { "node": "22.x" },
+  "engines": { "node": ">=20.0.0" },
   "dependencies": {
     "@next/env": "16.3.5",
     "clsx": "^2.1.1",
