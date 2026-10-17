@@ -216,20 +216,8 @@ body {
   }
 }
 
-.chat-workspace {
-  height: var(--chat-height, calc(100dvh - 20.5rem - var(--safe-top) - var(--safe-bottom)));
-  min-height: 18rem;
-}
-
-@media (max-height: 600px) {
-  /* A short landscape/keyboard viewport scrolls the page instead of hiding the composer. */
-  .chat-workspace { height: var(--chat-height, 24rem); }
-}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
-}
-@media (min-width: 1024px) {
-  .chat-workspace { height: var(--chat-height, calc(100dvh - 15rem - var(--safe-top) - var(--safe-bottom))); }
 }
 
 @media (min-width: 640px) {
@@ -251,6 +239,75 @@ body {
 .portal-mobile-nav {
   padding-left: max(0.5rem, var(--safe-left));
   padding-right: max(0.5rem, var(--safe-right));
+}
+
+/* Chat and Mail own the available viewport, with independently scrolling panes. */
+.communication-shell {
+  position: fixed;
+  top: var(--communication-top, 0px);
+  right: 0;
+  left: 0;
+  height: var(--communication-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: none;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+.communication-header { min-height: calc(3rem + var(--safe-top)); padding-top: var(--safe-top); }
+@layer components {
+.communication-icon {
+  display: inline-flex;
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: #9CA3AF;
+}
+.communication-icon:hover { color: white; background: #1F293D; }
+.communication-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+.communication-main { display: flex; flex-direction: column; }
+.communication-shell .portal-sidebar {
+  top: var(--communication-top, 0px);
+  height: var(--communication-height, 100dvh);
+}
+.communication-shell .portal-modal {
+  top: var(--communication-top, 0px);
+  bottom: auto;
+  height: var(--communication-height, 100dvh);
+}
+.communication-shell .portal-modal > :is(div, form) {
+  max-height: calc(var(--communication-height, 100dvh) - 2rem);
+}
+body:has(.communication-shell) :is(.pwa-update, .pwa-install) { display: none; }
+.chat-workspace { min-height: 0; }
+.chat-composer, .mail-compose-actions { padding-bottom: max(0.5rem, var(--safe-bottom)); }
+.chat-composer textarea { max-height: min(7.5rem, calc(var(--communication-height, 100dvh) / 4)); }
+.mail-workspace { display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+.mail-detail-pane { display: none; }
+.mail-workspace[data-reader-open='true'] .mail-list-pane { display: none; }
+.mail-workspace[data-reader-open='true'] .mail-detail-pane { display: flex; }
+.mail-list-pane > :last-child { padding-bottom: max(0.5rem, var(--safe-bottom)); }
+.mail-message-scroll { padding-bottom: max(1.5rem, var(--safe-bottom)); }
+
+@media (max-width: 767px) {
+  .mail-page[data-reading='true'] > .mail-toolbar { display: none; }
+  /* Put the conversation/composer first while typing, with no global chrome. */
+  .communication-shell:has(.chat-composer textarea:focus, .mail-compose input:focus, .mail-compose textarea:focus) > .communication-header { display: none; }
+}
+@media (min-width: 768px) {
+  .mail-workspace { grid-template-columns: 18rem minmax(0, 1fr); }
+  .mail-detail-pane { display: flex; }
+  .mail-workspace[data-reader-open='true'] .mail-list-pane { display: flex; }
+  .mail-workspace[data-reader-open='true'][data-reader-expanded='true'] { grid-template-columns: minmax(0, 1fr); }
+  .mail-workspace[data-reader-open='true'][data-reader-expanded='true'] .mail-list-pane { display: none; }
+}
+@media (min-width: 1280px) {
+  .mail-workspace { grid-template-columns: 21rem minmax(0, 1fr); }
 }
 
 /* Custom modern scrollbar */

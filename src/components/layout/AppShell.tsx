@@ -7,19 +7,18 @@ import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import MobileBottomNav from './MobileBottomNav';
 import PwaInstallBanner from '../pwa/PwaInstallBanner';
+import CommunicationShell from './CommunicationShell';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading } = useAuth();
   const isLoginPage = pathname === '/login';
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
-
-  // Close mobile drawer on route change
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
+  const [mobileMenu, setMobileMenu] = useState({ pathname, open: false });
+  const mobileMenuOpen = mobileMenu.pathname === pathname && mobileMenu.open;
+  const closeMobileMenu = useCallback(() => setMobileMenu({ pathname, open: false }), [pathname]);
+  // Reset route-specific navigation state before rendering the new screen.
+  if (mobileMenu.pathname !== pathname) setMobileMenu({ pathname, open: false });
 
   useEffect(() => {
     if (!loading && !user && !isLoginPage) {
@@ -58,6 +57,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
+  if (pathname === '/chat' || pathname === '/mail') {
+    return <CommunicationShell pathname={pathname}>{children}</CommunicationShell>;
+  }
+
   return (
     <div className="min-h-screen bg-[#0B0F19] text-gray-100 flex overflow-x-hidden">
       <Sidebar
@@ -65,14 +68,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onCloseMobile={closeMobileMenu}
       />
       <div className="flex-1 lg:ml-72 flex flex-col min-h-screen w-full overflow-x-hidden min-w-0">
-        <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
+        <Navbar onToggleMobileMenu={() => setMobileMenu({ pathname, open: !mobileMenuOpen })} />
         <main className="portal-main flex-1 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>
       <MobileBottomNav
         mobileMenuOpen={mobileMenuOpen}
-        onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+        onToggleMenu={() => setMobileMenu({ pathname, open: !mobileMenuOpen })}
       />
       <PwaInstallBanner />
     </div>

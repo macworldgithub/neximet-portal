@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, CheckCheck, Download, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -40,8 +40,6 @@ export default function ChatPage() {
   const messageRef = useRef(messages);
   messageRef.current = messages;
   const scroller = useRef<HTMLDivElement>(null);
-  const workspace = useRef<HTMLDivElement>(null);
-  const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const nearBottom = useRef(true);
@@ -51,46 +49,28 @@ export default function ChatPage() {
   const sendingIds = useRef(new Set<string>());
   const draft = activeId ? drafts[activeId] || { text: '' } : { text: '' };
 
-  useEffect(() => {
-    const panel = workspace.current;
-    if (!panel) return;
-    let revealFrame = 0;
-    const resize = () => {
-      const nav = document.querySelector<HTMLElement>('nav[aria-label="Mobile Navigation"]');
-      const navHeight = nav?.getBoundingClientRect().height || 0;
-      const top = panel.getBoundingClientRect().top + window.scrollY;
-      const height = window.visualViewport?.height || window.innerHeight;
-      const styles = getComputedStyle(document.documentElement);
-      const noticeHeight = (parseFloat(styles.getPropertyValue('--pwa-update-height')) || 0) + (parseFloat(styles.getPropertyValue('--pwa-install-height')) || 0);
-      const visibleBottom = height - navHeight - noticeHeight - 16;
-      panel.style.setProperty('--chat-height', `${Math.max(288, visibleBottom - top)}px`);
-      cancelAnimationFrame(revealFrame);
-      // Short landscape and keyboard viewports scroll the page. Keep the
-      // focused composer above the bottom navigation after that layout changes.
-      if (height < 600 && document.activeElement === composer.current) {
-        revealFrame = requestAnimationFrame(() => composer.current?.scrollIntoView({ block: 'center' }));
-      }
-    };
-    const observer = new ResizeObserver(resize);
-    if (panel.previousElementSibling) observer.observe(panel.previousElementSibling);
-    window.addEventListener('resize', resize);
-    window.addEventListener('pwa-layout-change', resize);
-    window.visualViewport?.addEventListener('resize', resize);
-    resize();
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(revealFrame);
-      window.removeEventListener('resize', resize);
-      window.removeEventListener('pwa-layout-change', resize);
-      window.visualViewport?.removeEventListener('resize', resize);
-    };
-  }, [user?.id]);
-
   const scrollToBottom = useCallback(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
+    if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
     nearBottom.current = true;
     setNewMessagesBelow(false);
   }, []);
+
+  useLayoutEffect(() => {
+    const input = composer.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+  }, [draft.text, activeId]);
+
+  useEffect(() => {
+    const panel = scroller.current;
+    if (!panel) return;
+    const observer = new ResizeObserver(() => {
+      if (nearBottom.current) panel.scrollTop = panel.scrollHeight;
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [activeId]);
 
   useEffect(() => subscribe((event) => {
     if (event.conversationId !== currentChat.current) return;
@@ -269,7 +249,7 @@ export default function ChatPage() {
     typingAt.current = 0;
     if (typingTimer.current) clearTimeout(typingTimer.current);
     nearBottom.current = true;
-    void deliver(item); composer.current?.focus();
+    void deliver(item); composer.current?.focus({ preventScroll: true });
     requestAnimationFrame(scrollToBottom);
   };
 
@@ -312,11 +292,11 @@ export default function ChatPage() {
   const typing = active?.members.filter((member) => member.user?._id !== user.id && member.typingUntil && new Date(member.typingUntil).getTime() > clock).map((member) => member.user?.name).filter(Boolean) || [];
   const visibleChats = conversations.filter((chat) => `${chatTitle(chat, user.id)} ${chat.lastMessage?.text || ''}`.toLowerCase().includes(query.toLowerCase()));
   const unsent = pending.filter((item) => item.chatId === activeId && !messages.some((message) => message.clientId === item.clientId && message.sender?._id === user.id));
-  return <div className="flex min-w-0 flex-col gap-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Team Chat</h1><p className="mt-1 text-sm text-gray-400">{connected ? 'Live · Connected' : 'Connecting · Messages sync automatically'}</p></div><div className="flex flex-wrap items-center gap-2"><ChatNotifications userId={user.id} /><button onClick={() => setNewChat(true)} className="gradient-btn flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"><Plus size={18} /><span className="hidden sm:inline">New conversation</span><span className="sm:hidden">New chat</span></button></div></div>
-    <div ref={workspace} className="chat-workspace flex min-h-0 overflow-hidden rounded-2xl border border-[#1F293D] bg-[#111827]">
-      <aside aria-label="Conversations" className={`${active ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-[#1F293D] md:w-72 xl:w-80`}>
-        <div className="border-b border-[#1F293D] p-4"><div className="relative"><Search size={17} className="absolute left-3 top-3 text-gray-500" /><input aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} className={`${field} py-3 pl-10 pr-3`} /></div></div>
+  return <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div className="chat-workspace flex min-h-0 flex-1 overflow-hidden bg-[#111827]">
+      <aside aria-label="Conversations" className={`${active ? 'hidden md:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-[#1F293D] md:w-72 xl:w-80`}>
+        <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2 pt-3"><div><h1 className="text-xl font-semibold">Chats</h1><p className="mt-0.5 text-[11px] text-gray-500">{connected ? 'Connected' : 'Syncing messages…'}</p></div><button onClick={() => setNewChat(true)} aria-label="New conversation" title="New conversation" className="communication-icon text-[#5CC5FA]"><Plus size={21} /></button></div>
+        <div className="shrink-0 border-b border-[#1F293D] px-3 pb-3"><div className="relative"><Search size={17} className="absolute left-3 top-3 text-gray-500" /><input aria-label="Search conversations" placeholder="Search conversations" value={query} onChange={(event) => setQuery(event.target.value)} className={`${field} py-2.5 pl-10 pr-3`} /></div></div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {inboxError && <div role="alert" className="m-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">{inboxError}<button onClick={() => void refresh()} className="ml-2 underline">Retry</button></div>}
           {inboxLoading && <p className="p-8 text-center text-sm text-gray-400">Loading conversations…</p>}
@@ -325,19 +305,20 @@ export default function ChatPage() {
             <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${chat.kind === 'group' ? 'bg-purple-500/15 text-purple-300' : 'bg-[#5470F4]/15 text-[#5CC5FA]'}`}>{chat.kind === 'group' ? <Users size={20} /> : initials(label)}</span>
             <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{label}</span>{chat.lastMessage && <span className="shrink-0 text-[10px] text-gray-500">{new Date(chat.lastMessage.createdAt).toDateString() === new Date().toDateString() ? time(chat.lastMessage.createdAt) : new Date(chat.lastMessage.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>}</span><span className="mt-1 flex items-center justify-between gap-2"><span className="truncate text-xs text-gray-400">{chat.lastMessage?.text || chat.lastMessage?.attachment?.name || 'Say hello'}</span>{!!chat.unreadCount && <span aria-label={`${chat.unreadCount} unread messages`} className="rounded-full bg-[#5470F4] px-2 py-0.5 text-[10px] font-bold text-white">{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>}</span></span>
           </button>; })}
-        </div><p className="border-t border-[#1F293D] px-4 py-3 text-[11px] text-gray-500">Private conversations for your team</p>
+        </div><div className="shrink-0 border-t border-[#1F293D] px-3 py-2"><ChatNotifications userId={user.id} /></div>
       </aside>
-      {active ? <section aria-label={`Chat with ${title}`} className="relative flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-[#1F293D] px-4 py-3"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
+      {active ? <section aria-label={`Chat with ${title}`} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-2 py-2 sm:px-4"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
         {showMembers && <div className="max-h-40 overflow-y-auto border-b border-[#1F293D] bg-[#0B0F19] p-4"><p className="mb-2 text-xs font-semibold text-gray-400">Conversation members</p>{active.members.map((member, index) => <p key={member.user?._id || index} className="py-1 text-sm">{member.user?.name || 'Former teammate'}{member.user?._id === user.id ? ' (you)' : ''}<span className="ml-2 text-xs text-gray-500">{member.user?.isActive === false ? 'Inactive' : member.user?.role}</span></p>)}</div>}
         {(!online || error) && <p role="status" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">{!online ? 'You are offline. Your drafts are kept while this page stays open.' : `${error} · Reconnecting automatically…`}</p>}
-        <div ref={scroller} onScroll={() => { const node = scroller.current; if (node) { nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100; if (nearBottom.current) setNewMessagesBelow(false); } }} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#0B0F19]/50 p-4 sm:p-6">
+        <div className="relative min-h-0 flex-1">
+        <div ref={scroller} data-chat-scroll onScroll={() => { const node = scroller.current; if (node) { nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100; if (nearBottom.current) setNewMessagesBelow(false); } }} className="h-full space-y-2 overflow-y-auto overscroll-contain bg-[#0B0F19]/50 px-3 py-4 sm:px-6">
           {hasMore && <div className="text-center"><button disabled={historyLoading} onClick={() => void loadOlder()} className="rounded-xl border border-[#1F293D] px-4 py-2 text-xs text-gray-400 hover:text-white disabled:opacity-50">{historyLoading ? 'Loading…' : 'Load earlier messages'}</button></div>}
           {loading && <div className="flex justify-center p-10"><Loader2 className="animate-spin text-[#5470F4]" size={24} /></div>}
           {!loading && !messages.length && !error && <div className="py-12 text-center"><MessageSquare className="mx-auto mb-3 text-[#5470F4]" size={36} /><p className="text-sm text-gray-300">Start the conversation with {title}.</p></div>}
           {messages.map((message, index) => { const own = message.sender?._id === user.id; const status = messageStatus(message, active, user.id); const statusLabel = status === 'seen' ? 'Seen by everyone' : status === 'delivered' ? 'Delivered to everyone' : 'Sent'; return <div key={message._id} data-message-id={message._id}>
             {(index === 0 || day(message.createdAt) !== day(messages[index - 1].createdAt)) && <div className="mb-5 text-center"><span className="rounded-full border border-[#1F293D] bg-[#111827] px-3 py-1 text-[10px] text-gray-400">{day(message.createdAt)}</span></div>}
-            <div className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[90%] rounded-2xl px-4 py-3 sm:max-w-[80%] ${own ? 'rounded-br-sm bg-[#5470F4]/85 text-white' : 'rounded-bl-sm border border-[#1F293D] bg-[#161F30]'}`}>
+            <div className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[90%] rounded-2xl px-3 py-2 sm:max-w-[min(80%,48rem)] ${own ? 'rounded-br-sm bg-[#5470F4]/85 text-white' : 'rounded-bl-sm border border-[#1F293D] bg-[#161F30]'}`}>
               {!own && active.kind === 'group' && <p className="mb-1 text-xs font-semibold text-[#5CC5FA]">{message.sender?.name || 'Former teammate'}</p>}
               {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">{message.text}</p>}
               {message.attachment?.name && <button onClick={() => void download(message)} className="mt-2 flex max-w-full items-center gap-3 rounded-xl border border-white/15 bg-black/15 p-3 text-left hover:bg-black/25"><Download className="shrink-0" size={18} /><span className="min-w-0"><span className="block truncate text-xs font-medium">{message.attachment.name}</span><span className="text-[10px] opacity-60">{(message.attachment.size / 1024).toFixed(0)} KB · Download</span></span></button>}
@@ -345,14 +326,16 @@ export default function ChatPage() {
             </div></div>
           </div>; })}
           {unsent.map((item) => <div key={item.clientId} className="flex justify-end"><div className="max-w-[90%] rounded-2xl rounded-br-sm border border-[#5470F4]/40 bg-[#5470F4]/20 px-4 py-3"><p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.text}</p>{item.file && <p className="mt-1 break-all text-xs text-gray-400">{item.file.name}</p>}{item.state === 'sending' ? <p className="mt-2 text-right text-[10px] text-gray-400">Sending…</p> : <div className="mt-2 text-xs text-rose-300"><p role="alert">{item.error}</p><button onClick={() => void deliver(item)} disabled={!online} className="mt-2 inline-flex items-center gap-1 underline disabled:opacity-40"><RefreshCw size={12} />Retry</button><button onClick={() => setPending((current) => current.filter((entry) => entry.clientId !== item.clientId))} className="ml-3 underline">Dismiss</button></div>}</div></div>)}
-          <div ref={bottom} />
         </div>
-        {newMessagesBelow && <button onClick={scrollToBottom} className="absolute bottom-36 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[#5470F4]/40 bg-[#111827] px-4 py-2 text-xs text-[#5CC5FA] shadow-lg"><ChevronDown size={15} />New messages</button>}
-        <div className="min-h-5 px-4 text-xs text-[#5CC5FA]" aria-live="polite">{typing.length > 0 && `${typing.slice(0, 2).join(', ')}${typing.length > 2 ? ' and others' : ''} ${typing.length === 1 ? 'is' : 'are'} typing…`}</div>
-        <form onSubmit={(event) => { event.preventDefault(); send(); }} className="border-t border-[#1F293D] p-3 sm:p-4">
+        {newMessagesBelow && <button onClick={scrollToBottom} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[#5470F4]/40 bg-[#111827] px-4 py-2 text-xs text-[#5CC5FA] shadow-lg"><ChevronDown size={15} />New messages</button>}
+        </div>
+        {typing.length > 0 && <div className="shrink-0 px-4 py-1 text-xs text-[#5CC5FA]" aria-live="polite">{`${typing.slice(0, 2).join(', ')}${typing.length > 2 ? ' and others' : ''} ${typing.length === 1 ? 'is' : 'are'} typing…`}</div>}
+        <form onSubmit={(event) => { event.preventDefault(); send(); }} className="chat-composer shrink-0 border-t border-[#1F293D] bg-[#111827] p-2 sm:px-4">
+          <div className="max-h-14 overflow-y-auto overscroll-contain">
           {actionError && <p role="alert" className="mb-2 flex items-center justify-between gap-2 text-xs text-rose-300">{actionError}<button type="button" aria-label="Dismiss error" onClick={() => setActionError('')}><X size={14} /></button></p>}
           {draft.file && <div className="mb-2 flex items-center gap-2 rounded-lg bg-[#161F30] px-3 py-2 text-xs"><Paperclip size={14} /><span className="min-w-0 flex-1 truncate">{draft.file.name}</span><button type="button" aria-label="Remove attachment" onClick={() => activeId && setDrafts((current) => ({ ...current, [activeId]: { text: current[activeId]?.text || '' } }))}><X size={16} /></button></div>}
-          <div className="flex items-end gap-2"><input ref={fileInput} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip" className="hidden" onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /><button type="button" aria-label="Attach a file (up to 3 MB)" onClick={() => fileInput.current?.click()} className="mb-1 rounded-xl p-2.5 text-gray-400 hover:bg-[#1F293D] hover:text-white"><Paperclip size={20} /></button><textarea ref={composer} aria-label="Message" placeholder={`Message ${title}…`} rows={2} maxLength={4000} value={draft.text} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.matchMedia('(min-width: 768px)').matches) { event.preventDefault(); send(); } }} className={`${field} max-h-36 min-h-12 resize-none p-3`} /><button type="submit" disabled={loading || !online || (!draft.text.trim() && !draft.file)} aria-label="Send message" className="gradient-btn mb-1 rounded-xl p-3 disabled:opacity-40"><Send size={19} /></button></div><p className="mt-2 text-[10px] text-gray-500"><span className="hidden md:inline">Enter to send · Shift+Enter for a new line · </span>Files up to 3 MB{draft.text.length > 3500 && <span className="float-right">{draft.text.length}/4000</span>}</p>
+          </div>
+          <div className="flex items-end gap-2"><input ref={fileInput} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip" className="hidden" onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /><button type="button" aria-label="Attach a file (up to 3 MB)" onClick={() => fileInput.current?.click()} className="mb-1 rounded-xl p-2.5 text-gray-400 hover:bg-[#1F293D] hover:text-white"><Paperclip size={20} /></button><textarea ref={composer} aria-label="Message" placeholder={`Message ${title}…`} rows={1} maxLength={4000} value={draft.text} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.matchMedia('(min-width: 768px)').matches) { event.preventDefault(); send(); } }} className={`${field} max-h-30 min-h-11 resize-none px-3 py-2.5`} /><button type="submit" onPointerDown={(event) => { if (document.activeElement === composer.current) event.preventDefault(); }} disabled={loading || !online || (!draft.text.trim() && !draft.file)} aria-label="Send message" className="gradient-btn mb-1 rounded-xl p-3 disabled:opacity-40"><Send size={19} /></button></div><p className="mt-1 hidden text-[10px] text-gray-500 md:block"><span>Enter to send · Shift+Enter for a new line · </span>Files up to 3 MB{draft.text.length > 3500 && <span className="float-right">{draft.text.length}/4000</span>}</p>
         </form>
       </section> : <div className="hidden flex-1 flex-col items-center justify-center px-8 text-center md:flex"><div className="mb-5 rounded-3xl border border-[#5470F4]/20 bg-[#5470F4]/10 p-6"><MessageSquare className="text-[#5CC5FA]" size={44} /></div><h2 className="text-xl font-semibold">Your team, one conversation away</h2><p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-400">Share updates, ask questions, and keep everyone connected. Choose a conversation or start a new one.</p><button onClick={() => setNewChat(true)} className="gradient-btn mt-6 rounded-xl px-5 py-3 text-sm font-semibold">Start a conversation</button></div>}
     </div>

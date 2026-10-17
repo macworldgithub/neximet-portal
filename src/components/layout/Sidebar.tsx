@@ -33,9 +33,10 @@ import { isMotoZ3, openMotoZ3Drawer } from '../../lib/motoZ3';
 interface SidebarProps {
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  drawerOnly?: boolean;
 }
 
-export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
+export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly = false }: SidebarProps) {
   const pathname = usePathname();
   const { unreadCount } = useChat();
   const { unread: unreadMail } = useMail();
@@ -55,21 +56,21 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
   useEffect(() => {
     if (!mobileOpen) return;
-    if (motoZ3) return openMotoZ3Drawer(menu.current, onCloseMobile);
+    if (motoZ3 && !drawerOnly) return openMotoZ3Drawer(menu.current, onCloseMobile);
     const previous = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (!drawerOnly) document.body.style.overflow = 'hidden';
     menu.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
-    const desktop = window.matchMedia('(min-width: 1024px)');
-    const closeOnDesktop = () => { if (desktop.matches) onCloseMobile?.(); };
-    desktop.addEventListener('change', closeOnDesktop);
+    const desktop = drawerOnly ? null : window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop?.matches) onCloseMobile?.(); };
+    desktop?.addEventListener('change', closeOnDesktop);
     closeOnDesktop();
     return () => {
-      document.body.style.overflow = previousOverflow;
-      desktop.removeEventListener('change', closeOnDesktop);
+      if (!drawerOnly) document.body.style.overflow = previousOverflow;
+      desktop?.removeEventListener('change', closeOnDesktop);
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
-  }, [mobileOpen, onCloseMobile, motoZ3]);
+  }, [mobileOpen, onCloseMobile, motoZ3, drawerOnly]);
 
   useEffect(() => {
     if (!user) return;
@@ -159,7 +160,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       {mobileOpen && (
         <div
           data-moto-z3-backdrop={motoZ3 ? true : undefined}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+          className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-40 ${drawerOnly ? '' : 'lg:hidden'} transition-opacity`}
           onClick={onCloseMobile}
         />
       )}
@@ -183,7 +184,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           }
         }}
         className={`portal-sidebar w-72 bg-[#0B0F19] border-r border-[#1F293D] flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
-          mobileOpen ? 'visible translate-x-0 shadow-2xl' : 'invisible -translate-x-full lg:visible lg:translate-x-0'
+          mobileOpen ? 'visible translate-x-0 shadow-2xl' : `invisible -translate-x-full ${drawerOnly ? '' : 'lg:visible lg:translate-x-0'}`
         }`}
       >
         {/* Brand Header */}
@@ -203,7 +204,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           {onCloseMobile && (
             <button
               onClick={onCloseMobile}
-              className="lg:hidden p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors"
+              className={`${drawerOnly ? '' : 'lg:hidden'} p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-[#161F30] transition-colors`}
               aria-label="Close Sidebar"
             >
               <X className="w-5 h-5" />
