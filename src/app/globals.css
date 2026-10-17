@@ -241,7 +241,7 @@ body {
   padding-right: max(0.5rem, var(--safe-right));
 }
 
-/* Chat and Mail own the available viewport, with independently scrolling panes. */
+/* Communication workspaces own the available viewport, with scrolling panes. */
 .communication-shell {
   position: fixed;
   top: var(--communication-top, 0px);
@@ -294,10 +294,43 @@ body:has(.communication-shell) :is(.pwa-update, .pwa-install) { display: none; }
 .mail-list-pane > :last-child { padding-bottom: max(0.5rem, var(--safe-bottom)); }
 .mail-message-scroll { padding-bottom: max(1.5rem, var(--safe-bottom)); }
 
+.ai-composer { padding-bottom: max(0.5rem, var(--safe-bottom)); }
+.ai-composer textarea { max-height: min(9rem, calc(var(--communication-height, 100dvh) / 4)); }
+.ai-dialog {
+  max-height: calc(var(--communication-height, 100dvh) - 2rem);
+  top: calc(var(--communication-top, 0px) + var(--communication-height, 100dvh) / 2);
+  bottom: auto;
+  margin-block: 0;
+  transform: translateY(-50%);
+}
+.ai-markdown { overflow-wrap: anywhere; }
+.ai-markdown > :first-child { margin-top: 0; }
+.ai-markdown > :last-child { margin-bottom: 0; }
+.ai-markdown p { margin-block: 0.75rem; }
+.ai-markdown :is(h1, h2, h3, h4) { margin-block: 1.5rem 0.75rem; font-weight: 600; color: #F3F4F6; line-height: 1.4; }
+.ai-markdown h1 { font-size: 1.6rem; }
+.ai-markdown h2 { font-size: 1.3rem; }
+.ai-markdown h3 { font-size: 1.1rem; }
+.ai-markdown :is(ul, ol) { padding-left: 1.5rem; margin-block: 0.75rem; }
+.ai-markdown ul { list-style: disc; }
+.ai-markdown ol { list-style: decimal; }
+.ai-markdown li { padding-left: 0.25rem; margin-block: 0.35rem; }
+.ai-markdown li > p { margin-block: 0.25rem; }
+.ai-markdown a { color: #5CC5FA; text-decoration: underline; text-underline-offset: 3px; }
+.ai-markdown blockquote { border-left: 3px solid #5470F4; padding-left: 1rem; margin-block: 1rem; color: #9CA3AF; }
+.ai-markdown :not(pre) > code { background: #1F293D; border-radius: 0.3rem; padding: 0.15rem 0.35rem; font-size: 0.85em; }
+.ai-markdown pre { overflow-wrap: normal; tab-size: 2; }
+.ai-markdown pre code { white-space: pre; }
+.ai-markdown table { border-collapse: collapse; font-size: 0.875rem; width: 100%; }
+.ai-markdown :is(th, td) { border: 1px solid #29344a; padding: 0.6rem 0.8rem; text-align: left; }
+.ai-markdown th { background: #161F30; font-weight: 600; }
+.ai-markdown hr { border-color: #1F293D; margin-block: 1.5rem; }
+.ai-markdown input[type='checkbox'] { accent-color: #5470F4; }
+
 @media (max-width: 767px) {
   .mail-page[data-reading='true'] > .mail-toolbar { display: none; }
   /* Put the conversation/composer first while typing, with no global chrome. */
-  .communication-shell:has(.chat-composer textarea:focus, .mail-compose input:focus, .mail-compose textarea:focus) > .communication-header { display: none; }
+  .communication-shell:has(.chat-composer textarea:focus, .mail-compose input:focus, .mail-compose textarea:focus, .ai-composer textarea:focus) > .communication-header { display: none; }
 }
 @media (min-width: 768px) {
   .mail-workspace { grid-template-columns: 18rem minmax(0, 1fr); }

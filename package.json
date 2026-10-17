@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test:communication": "node --test scripts/communication-viewport.test.mjs scripts/chat.test.mjs scripts/moto-z3.test.mjs",
-    "test:mail": "node --test scripts/mail-document.test.mjs"
+    "test:mail": "node --test scripts/mail-document.test.mjs",
+    "test:ai": "node --test scripts/ai.test.mjs",
+    "test:ai:ui": "playwright test --config=playwright.ai.config.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -17,11 +19,14 @@
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
+    "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.4",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

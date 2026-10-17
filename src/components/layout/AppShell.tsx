@@ -57,7 +57,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (pathname === '/chat' || pathname === '/mail') {
+  if (pathname === '/chat' || pathname === '/mail' || pathname === '/ai') {
     return <CommunicationShell pathname={pathname}>{children}</CommunicationShell>;
   }
 

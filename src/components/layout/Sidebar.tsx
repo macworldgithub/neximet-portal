@@ -25,6 +25,7 @@ import {
   Download,
   MessageSquare,
   Mail,
+  Sparkles,
 } from 'lucide-react';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import { usePwa } from '../pwa/PwaProvider';
@@ -98,6 +99,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
   const navItems = [
     { label: 'Team Chat', href: '/chat', icon: MessageSquare, badge: unreadCount ? `${unreadCount} unread` : null },
     { label: 'Mail', href: '/mail', icon: Mail, badge: unreadMail ? `${unreadMail} unread` : null },
+    { label: 'AI Workspace', href: '/ai', icon: Sparkles, badge: null },
     {
       label: 'Executive Dashboard',
       href: '/dashboard',
