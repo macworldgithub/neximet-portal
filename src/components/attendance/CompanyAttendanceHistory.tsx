@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Camera, Search } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { attendanceGet, attendancePost } from '../../lib/attendanceApi';
 import { attendanceHistoryRange, attendanceTime, companyDate, attendanceExpectation, type HistoryPeriod } from '../../lib/attendance';
 
@@ -27,6 +28,8 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
   onChanged?: () => Promise<void>;
   inspectPhoto: (id: string, name: string, department: string) => Promise<void>;
 }) {
+  const { user } = useAuth();
+  const canViewPay = user?.role === 'CEO';
   const [period, setPeriod] = useState<HistoryPeriod>('all');
   const [draft, setDraft] = useState({ startDate: '', endDate: '' });
   const [range, setRange] = useState(draft);
@@ -138,7 +141,7 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
     </div>
     {period === 'custom' && <p className="text-xs text-gray-400">Showing: {range.startDate ? `${range.startDate} to ${range.endDate} (inclusive)` : 'All recorded dates'}. Use Apply Date Range to update the results.</p>}
     <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-      <p className="text-gray-300" aria-live="polite">{loading ? 'Loading history...' : `${result.count.toLocaleString()} records · ${result.lateCount.toLocaleString()} late incidents · PKR ${result.totalDeductions.toLocaleString()} deductions`}</p>
+      <p className="text-gray-300" aria-live="polite">{loading ? 'Loading history...' : `${result.count.toLocaleString()} records · ${result.lateCount.toLocaleString()} late incidents${canViewPay ? ` · PKR ${(result.totalDeductions || 0).toLocaleString()} deductions` : ''}`}</p>
       <button className={buttonClass} disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh History</button>
     </div>
     {error && <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p>}
@@ -146,10 +149,10 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
       <table className="w-full min-w-[1000px] text-left text-xs">
         <caption className="sr-only">Company attendance records matching the applied date range and employee name</caption>
         <thead className="bg-[#0B0F19] text-gray-400"><tr>
-          {['Date', 'Employee', 'Selfie', 'Check-In', 'Check-Out', 'Hours', 'Status', 'Late', 'Deduction', 'Reason / Notes'].map(label => <th scope="col" key={label} className="px-3 py-3">{label}</th>)}
+          {['Date', 'Employee', 'Selfie', 'Check-In', 'Check-Out', 'Hours', 'Status', 'Late', ...(canViewPay ? ['Deduction'] : []), 'Reason / Notes'].map(label => <th scope="col" key={label} className="px-3 py-3">{label}</th>)}
         </tr></thead>
         <tbody className="divide-y divide-[#1F293D] text-gray-300">
-          {loading ? <tr><td colSpan={10} className="p-6 text-center">Loading attendance records...</td></tr> : result.records.length ? result.records.map(record => <tr key={record._id} className="hover:bg-[#161F30]">
+          {loading ? <tr><td colSpan={canViewPay ? 10 : 9} className="p-6 text-center">Loading attendance records...</td></tr> : result.records.length ? result.records.map(record => <tr key={record._id} className="hover:bg-[#161F30]">
             <td className="whitespace-nowrap px-3 py-3 font-mono">{record.date}</td>
             <td className="px-3 py-3"><span className="block font-semibold text-white">{record.user?.name || 'Deleted employee'}</span><span className="text-[10px] text-gray-400">{record.user?.department || '--'}</span></td>
             <td className="px-3 py-3">{record.hasPhoto ? <button className="rounded-xl border border-purple-400/40 p-2.5 text-purple-300" aria-label={`View selfie for ${record.user?.name || 'deleted employee'} on ${record.date}`} onClick={() => void inspectPhoto(record._id, record.user?.name || 'Deleted employee', record.user?.department || '')}><Camera className="h-4 w-4" /></button> : '--'}</td>
@@ -158,9 +161,9 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
             <td className="px-3 py-3">{record.checkOut ? (record.totalWorkHours ?? 0).toFixed(2) : '--'}</td>
             <td className="px-3 py-3"><span className="capitalize">{record.quarantine?.at ? 'Needs Attendance Repair' : record.status.replaceAll('_', ' ')}</span>{record.isSimulated && <span className="mt-1 block text-[10px] text-amber-300">CEO simulation</span>}</td>
             <td className="whitespace-nowrap px-3 py-3">{record.minutesLate > 0 ? `${record.minutesLate} min` : '--'}</td>
-            <td className="whitespace-nowrap px-3 py-3 font-mono">PKR {(record.deductionAmount || 0).toLocaleString()}{(record.quarantine?.at || record.isSimulated) && <span className="mt-1 block text-[10px] text-amber-300">Excluded from totals</span>}</td>
+            {canViewPay && <td className="whitespace-nowrap px-3 py-3 font-mono">PKR {(record.deductionAmount || 0).toLocaleString()}{(record.quarantine?.at || record.isSimulated) && <span className="mt-1 block text-[10px] text-amber-300">Excluded from totals</span>}</td>}
             <td className="min-w-[180px] max-w-xs break-words px-3 py-3">{record.deductionReason || record.notes || '--'}{record.financialReviewRequired && !record.quarantine?.at && <><span className="mt-1 block text-amber-300">Absence deduction requires administrator review.</span>{record.user && <button disabled={repairBusy} onClick={() => setAbsenceTarget(record)} className={`${buttonClass} mt-2`}>Review absence</button>}</>}{record.quarantine?.at && <><p className="mt-2 text-amber-300">{record.quarantine.reason}</p><button className={`${buttonClass} mt-2`} disabled={!record.suggestedRepairDate || repairBusy} onClick={() => { setRepairTarget(record); setRepairDate(record.suggestedRepairDate || ''); }}>Repair working date</button></>}</td>
-          </tr>) : <tr><td colSpan={10} className="p-6 text-center">{error ? 'History unavailable.' : 'No attendance records match these filters.'}</td></tr>}
+          </tr>) : <tr><td colSpan={canViewPay ? 10 : 9} className="p-6 text-center">{error ? 'History unavailable.' : 'No attendance records match these filters.'}</td></tr>}
         </tbody>
       </table>
     </div>

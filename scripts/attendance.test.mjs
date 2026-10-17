@@ -84,15 +84,15 @@ test('unrelated employee edits omit unchanged pay and balances rather than resen
 
 test('employee financial edits send only changed fields with their viewed values', () => {
   const original = { baseSalary: 30000, dailyWage: 1000, leaveBalances: { casual: 10, sick: 8, annual: 14 } };
-  const result = employeeCompensationChanges(original, { ...original, dailyWage: '', leaveBalances: { casual: 9.5, sick: 8, annual: 14 } });
-  assert.equal(result.dailyWage, null); assert.equal(result.expectedPay.dailyWage, 1000); assert.equal(result.baseSalary, undefined);
+  const result = employeeCompensationChanges(original, { ...original, baseSalary: '44000', dailyWage: '', leaveBalances: { casual: 9.5, sick: 8, annual: 14 } });
+  assert.equal(result.dailyWage, undefined); assert.equal(result.expectedPay.dailyWage, undefined); assert.equal(result.baseSalary, 44000); assert.equal(result.expectedPay.baseSalary, 30000);
   assert.equal(result.leaveBalances.casual, 9.5); assert.equal(result.expectedLeaveBalances.casual, 10); assert.equal(result.leaveBalances.sick, undefined);
 });
 
 test('employee creation preserves explicit zero pay and rejects invalid financial amounts', () => {
-  assert.equal(creationCompensation(0, 0).baseSalary, 0); assert.equal(creationCompensation(150000, 0).dailyWage, 0);
-  assert.equal(creationCompensation('', '').dailyWage, null);
-  for (const value of [Infinity, -1, 'invalid']) assert.throws(() => creationCompensation(value, 0));
+  assert.equal(creationCompensation(0).dailyWage, 0); assert.equal(creationCompensation(150000).dailyWage, 6818.18);
+  assert.equal(creationCompensation('').dailyWage, null);
+  for (const value of [Infinity, -1, 'invalid']) assert.throws(() => creationCompensation(value));
 });
 
 test('geofence distance stays finite for antipodal coordinates', () => {

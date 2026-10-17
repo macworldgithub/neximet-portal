@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { attendancePut as apiPut } from '../../lib/attendanceApi';
 import { employeeCompensationChanges } from '../../lib/employeeCompensation';
+import { useAuth } from '../../context/AuthContext';
 import {
   X,
   UserCheck,
@@ -31,6 +32,8 @@ export default function EditEmployeeModal({
   allEmployees,
   onUpdated,
 }: EditEmployeeModalProps) {
+  const { user } = useAuth();
+  const canViewPay = user?.role === 'CEO';
   const [name, setName] = useState('');
   const [role, setRole] = useState('Team Member');
   const [department, setDepartment] = useState('Software Development');
@@ -53,7 +56,7 @@ export default function EditEmployeeModal({
       setDepartment(employee.department || 'Software Development');
       setDesignation(employee.designation || '');
       setBaseSalary(employee.baseSalary ?? '');
-      setDailyWage(employee.dailyWage ?? '');
+      setDailyWage(employee.baseSalary == null ? '' : Math.round(Number(employee.baseSalary) / 22 * 100) / 100);
       setPhone(employee.phone || '');
       setCasualLeaves(employee.leaveBalances?.casual ?? 10);
       setSickLeaves(employee.leaveBalances?.sick ?? 8);
@@ -69,7 +72,7 @@ export default function EditEmployeeModal({
   const handleSalaryChange = (val: string) => {
     setBaseSalary(val);
     if (val !== '' && !isNaN(Number(val))) {
-      setDailyWage(Math.round(Number(val) / 30));
+      setDailyWage(Math.round(Number(val) / 22 * 100) / 100);
     } else {
       setDailyWage('');
     }
@@ -88,7 +91,7 @@ export default function EditEmployeeModal({
         department,
         designation: designation.trim(),
         phone: phone.trim(),
-        ...employeeCompensationChanges(employee, { baseSalary, dailyWage, leaveBalances: { casual: casualLeaves, sick: sickLeaves, annual: annualLeaves } }),
+        ...employeeCompensationChanges(canViewPay ? employee : { leaveBalances: employee.leaveBalances }, { ...(canViewPay ? { baseSalary } : {}), leaveBalances: { casual: casualLeaves, sick: sickLeaves, annual: annualLeaves } }),
         reportsTo: reportsTo ? reportsTo : null,
       };
 
@@ -127,7 +130,7 @@ export default function EditEmployeeModal({
                 Edit Employee & Compensation
                 <span className="break-all text-xs font-normal text-gray-400">({employee.email})</span>
               </h3>
-              <p className="text-xs text-gray-400">Executive modification of salary, daily wage & reporting line</p>
+              <p className="text-xs text-gray-400">{canViewPay ? 'Employee profile, salary and reporting line' : 'Employee profile and reporting line'}</p>
             </div>
           </div>
           <button
@@ -207,7 +210,7 @@ export default function EditEmployeeModal({
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none"
                 >
-                  <option value="CEO">CEO (Chief Executive Officer)</option>
+                  {canViewPay && <option value="CEO">CEO (Chief Executive Officer)</option>}
                   <option value="Super Admin">Super Admin</option>
                   <option value="Project Manager">Project Manager</option>
                   <option value="Team Manager">Team Manager</option>
@@ -242,7 +245,7 @@ export default function EditEmployeeModal({
           </div>
 
           {/* Section 3: Compensation & Salaries */}
-          <div className="space-y-4 pt-2 border-t border-[#1F293D]">
+          {canViewPay && <div className="space-y-4 pt-2 border-t border-[#1F293D]">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <Coins className="w-3.5 h-3.5 text-emerald-400" />
@@ -255,12 +258,13 @@ export default function EditEmployeeModal({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                <label htmlFor="edit-monthly-salary" className="block text-xs font-medium text-gray-300 mb-1.5">
                   Base Monthly Salary (PKR)
                 </label>
                 <input
                   type="number"
                   placeholder="e.g. 180000 (leave blank if unassigned)"
+                  id="edit-monthly-salary"
                   value={baseSalary}
                   onChange={(e) => handleSalaryChange(e.target.value)}
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none font-mono"
@@ -269,21 +273,23 @@ export default function EditEmployeeModal({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                <label htmlFor="edit-daily-wage" className="block text-xs font-medium text-gray-300 mb-1.5">
                   Daily Wage Rate (PKR)
                 </label>
                 <input
                   type="number"
-                  placeholder="e.g. 6000 (auto-calculated as base / 30)"
+                  placeholder="Calculated as monthly salary / 22"
+                  id="edit-daily-wage"
                   value={dailyWage}
-                  onChange={(e) => setDailyWage(e.target.value)}
+                  readOnly
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none font-mono"
                 />
-                <p className="text-[10px] text-gray-500 mt-1">Used for late attendance and absence deductions</p>
+                <p className="text-[10px] text-gray-500 mt-1">Monthly salary ÷ 22. Saturday and Sunday are off.</p>
               </div>
             </div>
           </div>
 
+          }
           {/* Section 4: Contact & Leave Balances */}
           <div className="space-y-4 pt-2 border-t border-[#1F293D]">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
@@ -363,7 +369,7 @@ export default function EditEmployeeModal({
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Save Compensation & Profile</span>
+                  <span>{canViewPay ? 'Save Compensation & Profile' : 'Save Profile'}</span>
                 </>
               )}
             </button>

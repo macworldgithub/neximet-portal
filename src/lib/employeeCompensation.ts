@@ -8,14 +8,14 @@ const nullableAmount = (value: unknown) => {
 };
 const snapshot = (value: unknown) => value === '' || value == null ? null : Number.isFinite(Number(value)) ? Number(value) : String(value);
 
-export function creationCompensation(baseSalary: unknown, dailyWage: unknown) {
+export function creationCompensation(baseSalary: unknown) {
   const salary = nullableAmount(baseSalary);
-  return { baseSalary: salary, dailyWage: dailyWage === '' || dailyWage == null ? salary == null ? null : Math.round(salary / 30) : nullableAmount(dailyWage) };
+  return { baseSalary: salary, dailyWage: salary == null ? null : Math.round(salary / 22 * 100) / 100 };
 }
 
 export function employeeCompensationChanges(original: Compensation, current: Compensation) {
   const result: { baseSalary?: number | null; dailyWage?: number | null; expectedPay?: Record<string, number | string | null>; leaveBalances?: Record<string, number>; expectedLeaveBalances?: Record<string, number | string | null> } = {};
-  for (const key of ['baseSalary', 'dailyWage'] as const) {
+  for (const key of ['baseSalary'] as const) {
     const value = nullableAmount(current[key]);
     const before = snapshot(original[key]);
     if (value !== before) { result[key] = value; (result.expectedPay ||= {})[key] = before; }

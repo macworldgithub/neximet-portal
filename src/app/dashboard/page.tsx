@@ -175,7 +175,7 @@ export default function DashboardPage() {
               ? 'Real-time company-wide project delivery, multi-department attendance health, and deduction oversight.'
               : isManager
               ? `Real-time sprint velocity, your attendance, and milestone deadlines for ${user?.department}.`
-              : 'Your personalized deliverables queue, daily check-in, and monthly salary deduction status.'}
+              : 'Your personalized deliverables queue, daily check-in, and monthly attendance status.'}
           </p>
         </div>
 
@@ -338,7 +338,7 @@ export default function DashboardPage() {
         )}
 
         {/* CARD 3: Deductions (Company for CEO, Personal for Manager/Member) */}
-        {isExecutive ? (
+        {user?.role === 'CEO' ? (
           <div className="bg-[#111827] border border-[#1F293D] hover:border-rose-500/40 p-5 rounded-2xl transition-all shadow-md group">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Company Late Deductions (Mo)</span>
@@ -360,33 +360,10 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-[#111827] border border-[#1F293D] hover:border-rose-500/40 p-5 rounded-2xl transition-all shadow-md group">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">My Salary Deductions (Mo)</span>
-              <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 group-hover:scale-110 transition-transform">
-                <Coins className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-2xl font-black text-white">
-                PKR {(attendance.myMonthlyDeductions || 0).toLocaleString()}
-              </span>
-              <span
-                className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                  (attendance.myMonthlyDeductions || 0) > 0
-                    ? 'bg-rose-500/20 text-rose-300'
-                    : 'bg-emerald-500/20 text-emerald-300'
-                }`}
-              >
-                {(attendance.myMonthlyDeductions || 0) > 0 ? 'Deducted' : 'Clean Record'}
-              </span>
-            </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-gray-400 border-t border-[#1F293D] pt-2.5">
-              <span>Today: PKR {attendance.myTodayStatus?.deductionAmount || 0}</span>
-              <Link href="/deduction-settings" className="text-[#5CC5FA] hover:underline flex items-center">
-                View Rules ↗
-              </Link>
-            </div>
+          <div className="rounded-2xl border border-[#1F293D] bg-[#111827] p-5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Attendance policy</h3>
+            <p className="mt-4 text-sm leading-6 text-gray-300">Every two lates: one deduction day. Arrival after 2 PM: full-day absence.</p>
+            <Link href="/deduction-settings" className="mt-3 inline-flex text-sm text-[#5CC5FA]">View attendance rules</Link>
           </div>
         )}
 

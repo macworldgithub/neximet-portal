@@ -369,7 +369,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-[#1F293D]">
-                              <span>Deduction: PKR {Number(att.deductionAmount || 0).toLocaleString()}</span>
+                              {user?.role === 'CEO' && <span>Deduction: PKR {Number(att.deductionAmount || 0).toLocaleString()}</span>}
                               <Link
                                 href="/attendance"
                                 onClick={() => setShowNotifDropdown(false)}

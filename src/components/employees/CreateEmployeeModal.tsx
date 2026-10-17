@@ -1,6 +1,7 @@
 'use client';
 
 import { creationCompensation } from '../../lib/employeeCompensation';
+import { useAuth } from '../../context/AuthContext';
 
 import React, { useState } from 'react';
 import { apiPost } from '../../lib/api';
@@ -33,6 +34,8 @@ export default function CreateEmployeeModal({
   onClose,
   onCreated,
 }: CreateEmployeeModalProps) {
+  const { user } = useAuth();
+  const canViewPay = user?.role === 'CEO';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +44,7 @@ export default function CreateEmployeeModal({
   const [department, setDepartment] = useState('Software Development');
   const [designation, setDesignation] = useState('');
   const [baseSalary, setBaseSalary] = useState(150000);
-  const [dailyWage, setDailyWage] = useState(5000);
+  const [dailyWage, setDailyWage] = useState(Math.round(150000 / 22 * 100) / 100);
   const [phone, setPhone] = useState('+92 (300) 123-4567');
   const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
   const [casualLeaves, setCasualLeaves] = useState(10);
@@ -66,7 +69,7 @@ export default function CreateEmployeeModal({
 
   const handleSalaryChange = (val: number) => {
     setBaseSalary(val);
-    setDailyWage(Math.round(val / 30));
+    setDailyWage(Math.round(val / 22 * 100) / 100);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,7 +96,7 @@ export default function CreateEmployeeModal({
         role,
         department,
         designation: designation.trim() || 'Specialist',
-        ...creationCompensation(baseSalary, dailyWage),
+        ...(canViewPay ? creationCompensation(baseSalary) : {}),
         phone: phone.trim(),
         joinDate,
         leaveBalances: {
@@ -194,10 +197,10 @@ export default function CreateEmployeeModal({
                   <span className="text-gray-400">Role & Department:</span>
                   <span className="text-gray-200">{createdEmployee.role} • {createdEmployee.department}</span>
                 </div>
-                <div className="flex justify-between">
+                {canViewPay && <div className="flex justify-between">
                   <span className="text-gray-400">Base Salary (PKR):</span>
                   <span className="text-emerald-400 font-bold">PKR {Number(createdEmployee.baseSalary).toLocaleString()}</span>
-                </div>
+                </div>}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
@@ -325,7 +328,7 @@ export default function CreateEmployeeModal({
                       <option value="Team Manager">Team Manager</option>
                       <option value="Project Manager">Project Manager</option>
                       <option value="Super Admin">Super Admin</option>
-                      <option value="CEO">CEO</option>
+                      {canViewPay && <option value="CEO">CEO</option>}
                     </select>
                   </div>
 
@@ -383,17 +386,18 @@ export default function CreateEmployeeModal({
               <div className="space-y-4 pt-2 border-t border-[#1F293D]">
                 <h4 className="text-xs font-bold text-[#5CC5FA] uppercase tracking-wider flex items-center gap-1.5">
                   <Coins className="w-3.5 h-3.5" />
-                  <span>Salary & Leaves (PKR)</span>
+                  <span>{canViewPay ? 'Salary & Leaves (PKR)' : 'Joining Date & Leaves'}</span>
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                  {canViewPay && <><div>
+                    <label htmlFor="create-monthly-salary" className="block text-xs font-semibold text-gray-300 mb-1.5">
                       Base Salary (PKR)
                     </label>
                     <input
                       type="number"
                       value={baseSalary}
+                      id="create-monthly-salary"
                       onChange={(e) => handleSalaryChange(Number(e.target.value))}
                       min={0}
                       step={1000}
@@ -402,18 +406,20 @@ export default function CreateEmployeeModal({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    <label htmlFor="create-daily-wage" className="block text-xs font-semibold text-gray-300 mb-1.5">
                       Daily Wage (PKR)
                     </label>
                     <input
                       type="number"
                       value={dailyWage}
-                      onChange={(e) => setDailyWage(Number(e.target.value))}
+                      id="create-daily-wage"
+                      readOnly
                       min={0}
                       className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none font-mono"
                     />
                   </div>
 
+                  </>}
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 mb-1.5">
                       Joining Date

@@ -439,7 +439,7 @@ export default function AttendancePage() {
       } else if (simulatedHour === 'late_35') {
         customTime = shiftSimulationTimestamp(shift.start, Math.min(shift.grace + 20, shift.half - 0.5), companyDay);
       } else if (simulatedHour === 'half_day') {
-        customTime = shiftSimulationTimestamp(shift.start, shift.half, companyDay);
+        customTime = `${companyDay}T14:01:00+05:00`;
       }
     }
 
@@ -693,7 +693,7 @@ export default function AttendancePage() {
               </div>
 
               {/* Deduction Indicator for Today */}
-              {todayAttendance && todayAttendance.deductionAmount > 0 && (
+              {isCEO && todayAttendance && todayAttendance.deductionAmount > 0 && (
                 <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-rose-400 flex items-center gap-1.5">
@@ -842,8 +842,8 @@ export default function AttendancePage() {
                           <option value="now">Real-Time Machine Clock (Default)</option>
                           <option value="on_time">At Shift Start (On Time)</option>
                           <option value="grace">Within the Configured Grace Window</option>
-                          <option value="late_35">Late, Before the Half-Day Threshold</option>
-                          <option value="half_day">At the Half-Day Threshold</option>
+                          <option value="late_35">Late, Before 2 PM</option>
+                          <option value="half_day">After 2 PM (Full-Day Absence)</option>
                         </select>
                       </div>
 
@@ -1073,7 +1073,7 @@ export default function AttendancePage() {
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        {record.deductionAmount > 0 ? (
+                        {!isCEO ? <span className="text-gray-500">CEO only</span> : record.deductionAmount > 0 ? (
                           <span className="text-rose-400 font-bold font-mono">-PKR {record.deductionAmount}</span>
                         ) : (
                           <span className="text-gray-500">PKR 0</span>
@@ -1177,7 +1177,7 @@ export default function AttendancePage() {
                       {item.minutesLate > 0 ? `${item.minutesLate} mins` : '--'}
                     </td>
                     <td className="py-3.5 px-4 font-mono">
-                      {item.deductionAmount > 0 ? (
+                      {!isCEO ? <span className="text-gray-500">CEO only</span> : item.deductionAmount > 0 ? (
                         <span className="text-rose-400 font-bold">-PKR {item.deductionAmount}</span>
                       ) : (
                         <span className="text-gray-500">PKR 0</span>

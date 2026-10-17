@@ -304,10 +304,10 @@ export default function EmployeesPage() {
               </div>
 
               <div className="border-t border-[#1F293D] pt-3 space-y-3">
-                <div className="flex items-center justify-between text-[11px] text-gray-400">
+                {user?.role === 'CEO' && <div className="flex items-center justify-between text-[11px] text-gray-400">
                   <div>
                     <span className="block text-[10px] text-gray-500">Base Salary</span>
-                    {emp.baseSalary ? (
+                    {emp.baseSalary != null ? (
                       <span className="text-emerald-400 font-bold font-mono">
                         PKR {Number(emp.baseSalary).toLocaleString()}
                       </span>
@@ -319,7 +319,7 @@ export default function EmployeesPage() {
                   </div>
                   <div className="text-right">
                     <span className="block text-[10px] text-gray-500">Daily Wage</span>
-                    {emp.dailyWage ? (
+                    {emp.dailyWage != null ? (
                       <span className="text-white font-mono font-semibold">
                         PKR {Number(emp.dailyWage).toLocaleString()}
                       </span>
@@ -329,15 +329,16 @@ export default function EmployeesPage() {
                   </div>
                 </div>
 
+                }
                 {/* Super Admin / CEO Quick Actions */}
-                {isSuperAdmin && (
+                {isSuperAdmin && (emp.role !== 'CEO' || user?.role === 'CEO') && (
                   <div className="pt-2 border-t border-[#1F293D]/60 flex items-center justify-between gap-2">
                     <button
                       onClick={() => setSelectedEmployeeForEdit(emp)}
                       className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white bg-[#161F30] hover:bg-[#1E293D] border border-[#2D3A54] hover:border-amber-500/40 flex items-center gap-1.5 transition-all"
                     >
                       <Pencil className="w-3 h-3 text-amber-400" />
-                      <span>Edit & Salary</span>
+                      <span>{user?.role === 'CEO' ? 'Edit & Salary' : 'Edit Profile'}</span>
                     </button>
 
                     <button

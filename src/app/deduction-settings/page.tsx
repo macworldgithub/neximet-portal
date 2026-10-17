@@ -7,7 +7,6 @@ import {
   Coins,
   ShieldCheck,
   Clock,
-  Percent,
   Sliders,
   AlertTriangle,
   CheckCircle2,
@@ -25,7 +24,7 @@ import {
 export default function DeductionSettingsPage() {
   const { user, hasRole } = useAuth();
   const isCeo = hasRole('CEO');
-  const canViewLedger = hasRole('CEO', 'Super Admin', 'Project Manager');
+  const canViewLedger = isCeo;
 
   const [rule, setRule] = useState<any>({
     title: 'Neximet Enterprise Attendance & Late Deduction Policy',
@@ -60,10 +59,10 @@ export default function DeductionSettingsPage() {
 
   // Simulator state
   const [testMinutesLate, setTestMinutesLate] = useState(35);
-  const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 30) : 0));
+  const [testDailyWage, setTestDailyWage] = useState(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 22 * 100) / 100 : 0));
   const [priorLateCount, setPriorLateCount] = useState(0);
   const [simulationResult, setSimulationResult] = useState<any>(null);
-  const simulatorMaxMinutes = Math.min(1440, Math.max(240, rule.fullDayAbsentThresholdMinutes + 60));
+  const simulatorMaxMinutes = 900;
   useEffect(() => { setTestMinutesLate(value => Math.min(value, simulatorMaxMinutes)); }, [simulatorMaxMinutes]);
 
   // Monthly report state
@@ -111,7 +110,7 @@ export default function DeductionSettingsPage() {
     sessionVersion.current++;
     savePending.current = false;
     setSaving(false); setDetectingGps(false); setMsg(null);
-    setTestDailyWage(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 30) : 0));
+    setTestDailyWage(user?.dailyWage ?? (user?.baseSalary ? Math.round(user.baseSalary / 22 * 100) / 100 : 0));
     setPriorLateCount(0);
     void fetchSettings();
     return () => { fetchSequence.current++; sessionVersion.current++; };
@@ -196,7 +195,7 @@ export default function DeductionSettingsPage() {
             <span>Company Attendance & Deduction Rules</span>
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Official automated late penalties, grace periods, percentage/fixed deduction models, and office geofence policy.
+            Two lates per deduction day, a 2 PM absence cutoff, and a 22-day salary divisor.
           </p>
         </div>
 
@@ -221,7 +220,7 @@ export default function DeductionSettingsPage() {
           <div>
             <h4 className="font-bold text-white text-xs">Official Company Deduction Policy</h4>
             <p className="text-[11px] text-gray-300 mt-0.5 leading-relaxed">
-              These deduction rates, grace periods, and thresholds are configured and enforced by the Chief Executive Officer. All employees have access to view these active rules and use the <strong>What-If Simulator</strong> to inspect penalty calculations.
+              Every two lates deduct one day, and arrival after 2 PM counts as an absence. All employees can view these rules and use the <strong>What-If Simulator</strong>; salary amounts are visible only to CEOs.
             </p>
           </div>
         </div>
@@ -252,14 +251,14 @@ export default function DeductionSettingsPage() {
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
               {isCeo
-                ? 'Customize when late marks trigger and how money is deducted from daily wages.'
+                ? 'Manage shift times, grace periods and office verification settings.'
                 : 'Current thresholds and salary penalty formulas configured for the organization.'}
             </p>
           </div>
 
           <form onSubmit={handleSaveRule} className="space-y-5">
             <fieldset disabled={!isCeo || !policyReady || loading} className="space-y-5">
-            <div><p className="mb-2 text-xs font-semibold text-gray-300">Scheduled Working Days</p><div className="flex flex-wrap gap-2">{['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((day, index) => <label key={day} className="inline-flex items-center gap-2 rounded-xl border border-[#1F293D] px-3 py-2 text-xs text-gray-300"><input type="checkbox" checked={(rule.workingDays || [1,2,3,4,5]).includes(index)} onChange={event => setRule({ ...rule, workingDays: event.target.checked ? [...(rule.workingDays || [1,2,3,4,5]), index].sort() : (rule.workingDays || [1,2,3,4,5]).filter((value: number) => value !== index) })} />{day}</label>)}</div><p className="mt-2 text-[11px] text-gray-400">Leave duration and missing-attendance history use this calendar and mandatory holidays.</p></div>
+            <p className="text-sm text-gray-300">Working days: Monday–Friday. Saturday and Sunday are off.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Standard Shift Start Time</label>
@@ -299,100 +298,12 @@ export default function DeductionSettingsPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">Deduction Calculation Model</label>
-                <select
-                  value={rule.deductionType}
-                  onChange={(e) => setRule({ ...rule, deductionType: e.target.value })}
-                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                >
-                  <option value="percentage">Percentage of Employee Daily Wage (%)</option>
-                  <option value="fixed">Fixed Currency Amount (PKR / flat)</option>
-                </select>
-              </div>
-
-              {rule.deductionType === 'percentage' ? (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1">
-                    Deduction Rate (% of Daily Wage)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    required
-                    value={rule.percentageDeductionRate}
-                    onChange={(e) => setRule({ ...rule, percentageDeductionRate: Number(e.target.value) })}
-                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1">
-                    Fixed Penalty Amount (PKR per late arrival)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    required
-                    value={rule.fixedDeductionAmount}
-                    onChange={(e) => setRule({ ...rule, fixedDeductionAmount: Number(e.target.value) })}
-                    className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">
-                  Half-Day Threshold (Minutes)
-                  <span className="text-[10px] text-gray-400 font-normal ml-1">Triggers 50% wage loss</span>
-                </label>
-                <input
-                  type="number"
-                  min={30}
-                  max={240}
-                  required
-                  value={rule.halfDayThresholdMinutes}
-                  onChange={(e) => setRule({ ...rule, halfDayThresholdMinutes: Number(e.target.value) })}
-                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">
-                  Monthly Late Threshold (Count; 0 disables)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  required
-                  value={rule.consecutiveLateThreshold}
-                  onChange={(e) => setRule({ ...rule, consecutiveLateThreshold: Number(e.target.value) })}
-                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">
-                  Repeat Infraction Multiplier
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min={1}
-                  max={5}
-                  required
-                  value={rule.consecutivePenaltyMultiplier}
-                  onChange={(e) => setRule({ ...rule, consecutivePenaltyMultiplier: Number(e.target.value) })}
-                  className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                />
-              </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1">Full-Day Absence Threshold (Minutes Late)</label>
-              <input type="number" min={rule.halfDayThresholdMinutes + 1} max={1440} required value={rule.fullDayAbsentThresholdMinutes} onChange={e => setRule({ ...rule, fullDayAbsentThresholdMinutes: Number(e.target.value) })} className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-2 text-xs text-white" />
+            <div className="rounded-2xl border border-[#5470F4]/30 bg-[#5470F4]/5 p-4 text-sm leading-7 text-gray-300">
+              <h4 className="mb-2 font-semibold text-white">Active salary deduction policy</h4>
+              <p>Every two late arrivals in a calendar month deduct one day of salary. The first late has no charge; the second completes a pair.</p>
+              <p>Arrival after 2:00 PM (Asia/Karachi) counts as a full-day absence and deducts one daily wage. It does not also count toward a late pair. Exactly 2:00 PM is within the late window.</p>
+              <p>Daily wage = monthly salary ÷ 22. Saturday and Sunday are off. Approved leave and holidays remain exempt.</p>
             </div>
 
             {/* Office Geofencing & Location Enforcement Section */}
@@ -663,10 +574,11 @@ export default function DeductionSettingsPage() {
                 <div className="flex justify-between text-[10px] text-gray-500 mt-1">
                   <span>0m (On-time)</span>
                   <span>Grace: {rule.gracePeriodMinutes}m</span>
-                  <span>Half-Day: {rule.halfDayThresholdMinutes}m</span>
+                  <span>Absence: after 2 PM</span>
                 </div>
               </div>
 
+              {isCeo && <>
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Employee Daily Wage (PKR)</label>
                 <input
@@ -677,6 +589,7 @@ export default function DeductionSettingsPage() {
                   className="w-full bg-[#0B0F19] border border-[#1F293D] focus:border-[#5470F4] rounded-xl px-3 py-2 text-xs text-white font-mono outline-none"
                 />
               </div>
+              </>}
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Previous late arrivals this month</label>
                 <input type="number" min={0} step={1} value={priorLateCount} onChange={e => setPriorLateCount(Number(e.target.value))} className="w-full bg-[#0B0F19] border border-[#1F293D] rounded-xl px-3 py-2 text-xs text-white" />
@@ -701,7 +614,7 @@ export default function DeductionSettingsPage() {
                 <div className="flex items-baseline justify-between border-t border-[#1F293D] pt-2">
                   <span className="text-xs font-bold text-gray-300">Deduction Calculated:</span>
                   <span className="text-2xl font-black text-rose-400 font-mono">
-                    -PKR {simulationResult.deduction}
+                    {isCeo ? `PKR ${simulationResult.deduction}` : `${(simulationResult.deductionPercentage || 0) / 100} day(s)`}
                   </span>
                 </div>
 
