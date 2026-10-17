@@ -7,7 +7,7 @@ const reply = '## Project plan\n\nStart with **clear goals**.\n\n| Task | Owner 
 const runtimeErrors = new WeakMap();
 test.beforeEach(async ({ page }) => { const errors = []; runtimeErrors.set(page, errors); page.on('pageerror', error => errors.push(error.message)); });
 test.afterEach(async ({ page }) => { expect(runtimeErrors.get(page)).toEqual([]); });
-async function mockAPI(page, connected = false) {
+async function mockAPI(page, connected = false, billingFailure = false) {
   const connections = ['openai', 'claude', 'gemini'].map(provider => ({ provider, connected, models: connected ? models(provider) : [], defaultModel: connected ? models(provider)[0].id : '' }));
   const chats = new Map();
   const requests = [];
@@ -40,8 +40,11 @@ async function mockAPI(page, connected = false) {
       const chat = chats.get(id), { text, requestId } = request.postDataJSON();
       const userMessage = { id: 'user-message', requestId, role: 'user', content: text, status: 'complete', createdAt: now };
       const assistantMessage = { id: 'assistant-message', requestId, role: 'assistant', content: '', status: 'pending', createdAt: now };
-      chat.title = text.slice(0, 80); chat.messages.push(userMessage, { ...assistantMessage, content: reply, status: 'complete' });
-      const events = [{ type: 'start', conversationId: id, title: chat.title, userMessage, assistantMessage }, { type: 'delta', text: reply }, { type: 'done', message: chat.messages.at(-1) }];
+      const quotaFailure = billingFailure === 'quota';
+      const errorMessage = quotaFailure ? 'Gemini request or token quota has been reached. Wait for the applicable limit to reset, then send again.' : 'OpenAI API credits are insufficient or API billing is not enabled. Check your API billing balance before sending again.';
+      const errorCode = quotaFailure ? 'ai_quota_exhausted' : 'ai_billing_required';
+      chat.title = text.slice(0, 80); chat.messages.push(userMessage, billingFailure ? { ...assistantMessage, status: 'error', errorCode, errorMessage } : { ...assistantMessage, content: reply, status: 'complete' });
+      const events = [{ type: 'start', conversationId: id, title: chat.title, userMessage, assistantMessage }, billingFailure ? { type: 'error', message: errorMessage, code: errorCode } : { type: 'delta', text: reply }, { type: 'done', message: chat.messages.at(-1) }];
       return route.fulfill({ status: 200, contentType: 'text/event-stream', body: events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') });
     }
     if (path === `/ai/conversations/${id}`) {
@@ -148,4 +151,40 @@ test('personal connection settings remain usable on a small keyboard-sized scree
   await expect(dialog.getByRole('status')).toContainText('Connected');
   await checkOverflow(page);
   await page.screenshot({ path: 'test-results/ai-mobile-settings.png', fullPage: true });
+});
+
+test('billing errors show the provider billing link and survive a conversation reload', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockAPI(page, true, true); await page.goto('/ai');
+  await page.getByRole('textbox', { name: 'Message AI' }).fill('Hello');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const reply = page.getByRole('article', { name: 'GPT reply' });
+  await expect(reply.getByRole('alert')).toContainText('OpenAI API credits');
+  await expect(page.getByRole('link', { name: 'Open GPT API billing' })).toHaveAttribute('href', 'https://platform.openai.com/settings/organization/billing');
+  await expect(reply.getByRole('alert')).not.toContainText('provider is unavailable');
+  await page.reload();
+  await expect(reply.getByRole('alert')).toContainText('OpenAI API credits');
+  await expect(page.getByRole('link', { name: 'Open GPT API billing' })).toBeVisible();
+  await checkOverflow(page);
+});
+test('free-tier setup opens Gemini and exhausted quota shows a reset message without paid fallback', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await mockAPI(page, true, 'quota'); await page.goto('/ai');
+  await page.getByRole('button', { name: 'Set up Gemini free-tier access' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: "Use Gemini's free API allowance" })).toBeVisible();
+  await expect(dialog.getByText(/no billing account linked/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'AI provider' })).toHaveValue('gemini');
+  await page.getByRole('textbox', { name: 'Message AI' }).fill('Hello');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const reply = page.getByRole('article', { name: 'Gemini reply' });
+  await expect(reply.getByRole('alert')).toContainText('quota');
+  await expect(reply.getByRole('alert')).toContainText('reset');
+  await expect(reply.getByRole('link', { name: 'Check Gemini quota & usage' })).toBeVisible();
+  await expect(reply.getByRole('link', { name: /API billing/ })).toHaveCount(0);
+  expect(state.requests.filter(request => request.path.endsWith('/messages')).length).toBe(1);
+  await page.reload();
+  await expect(reply.getByRole('alert')).toContainText('quota');
+  await checkOverflow(page);
 });

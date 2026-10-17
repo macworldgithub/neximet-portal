@@ -9,6 +9,8 @@ export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
   status: 'complete' | 'pending' | 'stopped' | 'error' | 'limited';
+  errorMessage?: string;
+  errorCode?: string;
   createdAt: string;
 }
 export interface AIConversationSummary { _id: string; title: string; provider: AIProvider; model: string; updatedAt: string }
@@ -20,12 +22,19 @@ export const aiProviders: { id: AIProvider; name: string; short: string; descrip
 ];
 export const emptyConnections: AIConnection[] = aiProviders.map(item => ({ provider: item.id, connected: false, defaultModel: '', models: [] }));
 export const providerName = (provider: AIProvider) => aiProviders.find(item => item.id === provider)?.short || provider;
+export const aiBillingUrl = (provider: AIProvider) => ({
+  openai: 'https://platform.openai.com/settings/organization/billing',
+  claude: 'https://platform.claude.com/settings/billing',
+  gemini: 'https://aistudio.google.com/usage',
+})[provider];
+export const isAIBillingError = (code?: string) => code === 'ai_billing_required' || code === 'ai_spend_limit';
+export const isAIQuotaError = (code?: string) => code === 'ai_quota_exhausted';
 
 export type AIStreamEvent =
   | { type: 'start'; conversationId: string; title: string; userMessage: AIMessage; assistantMessage: AIMessage }
   | { type: 'delta'; text: string }
   | { type: 'done'; message: AIMessage }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string; code?: string };
 
 // Both the HTTP request and its response body share the caller's abort signal.
 export async function streamAI(id: string, text: string, requestId: string, signal: AbortSignal, onEvent: (event: AIStreamEvent) => void) {
