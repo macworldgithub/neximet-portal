@@ -18,10 +18,11 @@ function load(file, dependencies = {}) {
 const document = load('../src/lib/mailDocument.ts');
 const { default: MailBody } = load('../src/components/mail/MailBody.tsx', { '../../lib/mailDocument': document });
 
-test('formatted email keeps original paragraphs, quotes and lists on a light canvas', () => {
+test('formatted email keeps original paragraphs, quotes and lists in the application theme', () => {
   const html = '<p>Appreciate that</p><blockquote><p>Me again,</p><ul><li><b>Only continue</b></li></ul></blockquote>';
   const result = document.mailDocument(html);
-  assert.ok(result.includes(html)); assert.match(result, /color-scheme: light/); assert.match(result, /background: #fff/);
+  assert.ok(result.includes(html)); assert.match(result, /color-scheme: dark/); assert.match(result, /background: #111827/);
+  assert.match(result, /color: #F3F4F6/); assert.match(result, /color: #5CC5FA/);
   assert.match(result, /overflow-wrap: anywhere/); assert.match(result, /max-width: 100%/);
 });
 
