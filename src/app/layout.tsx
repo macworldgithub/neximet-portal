@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthProvider } from '../context/AuthContext';
 import { ChatProvider } from '../context/ChatContext';
+import { CallProvider } from '../context/CallContext';
 import { MailProvider } from '../context/MailContext';
 import { PwaProvider } from '../components/pwa/PwaProvider';
 import AppShell from '../components/layout/AppShell';
@@ -56,11 +57,13 @@ export default function RootLayout({
       <body className="min-h-full bg-[#0B0F19] text-gray-100 antialiased font-sans" suppressHydrationWarning>
         <AuthProvider>
           <ChatProvider>
+            <CallProvider>
             <MailProvider>
               <PwaProvider>
                 <AppShell>{children}</AppShell>
               </PwaProvider>
             </MailProvider>
+            </CallProvider>
           </ChatProvider>
         </AuthProvider>
       </body>

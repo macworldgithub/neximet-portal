@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, CheckCheck, Download, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, Download, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw, Phone, Video } from 'lucide-react';
+import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { API_URL, apiFetch, getToken } from '../../lib/api';
@@ -309,6 +310,7 @@ export default function ChatPage() {
       </aside>
       {active ? <section aria-label={`Chat with ${title}`} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-2 py-2 sm:px-4"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
+        <div className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-3 py-2 sm:px-4"><Link href={`/meet?conversation=${active._id}&mode=audio`} className="flex items-center gap-2 rounded-lg bg-[#5470F4]/15 px-3 py-2 text-xs text-[#9db2ff]"><Phone size={16} />Voice call</Link><Link href={`/meet?conversation=${active._id}&mode=video`} className="flex items-center gap-2 rounded-lg bg-[#5470F4]/15 px-3 py-2 text-xs text-[#9db2ff]"><Video size={16} />Video call</Link></div>
         {showMembers && <div className="max-h-40 overflow-y-auto border-b border-[#1F293D] bg-[#0B0F19] p-4"><p className="mb-2 text-xs font-semibold text-gray-400">Conversation members</p>{active.members.map((member, index) => <p key={member.user?._id || index} className="py-1 text-sm">{member.user?.name || 'Former teammate'}{member.user?._id === user.id ? ' (you)' : ''}<span className="ml-2 text-xs text-gray-500">{member.user?.isActive === false ? 'Inactive' : member.user?.role}</span></p>)}</div>}
         {(!online || error) && <p role="status" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">{!online ? 'You are offline. Your drafts are kept while this page stays open.' : `${error} · Reconnecting automatically…`}</p>}
         <div className="relative min-h-0 flex-1">

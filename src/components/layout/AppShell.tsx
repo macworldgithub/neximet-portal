@@ -23,7 +23,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user && !isLoginPage) {
       const chat = pathname === '/chat' ? new URLSearchParams(window.location.search).get('conversation') : null;
-      router.replace(chat && /^[a-f\d]{24}$/i.test(chat) ? `/login?chat=${chat}` : '/login');
+      const meeting = pathname === '/meet' ? window.location.search : null;
+      router.replace(meeting ? `/login?meet=${encodeURIComponent(meeting)}` : chat && /^[a-f\d]{24}$/i.test(chat) ? `/login?chat=${chat}` : '/login');
     }
   }, [user, loading, isLoginPage, router, pathname]);
 
@@ -57,7 +58,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (pathname === '/chat' || pathname === '/mail' || pathname === '/ai') {
+  if (pathname === '/chat' || pathname === '/mail' || pathname === '/ai' || pathname === '/meet') {
     return <CommunicationShell pathname={pathname}>{children}</CommunicationShell>;
   }
 

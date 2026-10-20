@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Home, Mail, Menu, MessageSquare, Sparkles } from 'lucide-react';
+import { Home, Mail, Menu, MessageSquare, Sparkles, Video } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useMail } from '../../context/MailContext';
 import { bindCommunicationViewport } from '../../lib/communicationViewport';
@@ -27,7 +27,7 @@ export default function CommunicationShell({ pathname, children }: { pathname: s
         <span className="hidden text-sm font-semibold text-gray-300 sm:inline">Neximet</span>
       </div>
       <nav aria-label="Communication" className="flex items-center gap-1">
-        {[{ href: '/chat', label: 'Chat', icon: MessageSquare, unread: unreadCount }, { href: '/mail', label: 'Mail', icon: Mail, unread }, { href: '/ai', label: 'AI', icon: Sparkles, unread: 0 }].map(item => <Link
+        {[{ href: '/chat', label: 'Chat', icon: MessageSquare, unread: unreadCount }, { href: '/meet', label: 'Meet', icon: Video, unread: 0 }, { href: '/mail', label: 'Mail', icon: Mail, unread }, { href: '/ai', label: 'AI', icon: Sparkles, unread: 0 }].map(item => <Link
           key={item.href} href={item.href} aria-label={item.label} onClick={() => setMenuOpen(false)} aria-current={pathname === item.href ? 'page' : undefined}
           className={`flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm font-medium sm:gap-2 sm:px-3 ${pathname === item.href ? 'bg-[#5470F4]/20 text-[#5CC5FA]' : 'text-gray-400 hover:bg-[#161F30]'}`}
         ><item.icon size={17} /><span className="hidden min-[400px]:inline">{item.label}</span>{item.unread > 0 && <span className="rounded-full bg-[#5470F4] px-1.5 text-[10px] text-white" aria-label={`${item.unread} unread`}>{item.unread > 99 ? '99+' : item.unread}</span>}</Link>)}

@@ -24,6 +24,7 @@ import {
   Settings,
   Download,
   MessageSquare,
+  Video,
   Mail,
   Sparkles,
 } from 'lucide-react';
@@ -97,6 +98,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
   const isExecutive = isSuperAdmin || user?.role === 'CEO';
 
   const navItems = [
+    { label: 'Meetings', href: '/meet', icon: Video, badge: null },
     { label: 'Team Chat', href: '/chat', icon: MessageSquare, badge: unreadCount ? `${unreadCount} unread` : null },
     { label: 'Mail', href: '/mail', icon: Mail, badge: unreadMail ? `${unreadMail} unread` : null },
     { label: 'AI Workspace', href: '/ai', icon: Sparkles, badge: null },
