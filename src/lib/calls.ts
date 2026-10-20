@@ -1,9 +1,9 @@
 import type { Socket } from 'socket.io-client';
 
 export type CallParticipant = { socketId: string; userId: string; name: string; microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean };
-export type Meeting = { id: string; conversationId: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; participants: CallParticipant[] };
+export type Meeting = { id: string; conversationId: string; meetingId?: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; participants: CallParticipant[] };
 export type Invitation = Meeting & { callerName: string; expiresAt: number };
-export type RemoteMedia = { camera: MediaStream; screen: MediaStream; status: RTCPeerConnectionState };
+export type RemoteMedia = { audio: MediaStream; camera: MediaStream; screen: MediaStream; status: RTCPeerConnectionState };
 type Signal = { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
 type Peer = { pc: RTCPeerConnection; ready: Promise<void>; candidates: RTCIceCandidateInit[]; media: RemoteMedia; queue: Promise<void> };
 
@@ -43,12 +43,13 @@ export class MeetingMedia {
       pc.addTransceiver('video', { direction: 'sendrecv' });
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
-    const peer: Peer = { pc, candidates: [], media: { camera: new MediaStream(), screen: new MediaStream(), status: 'new' }, queue: Promise.resolve(),
+    const peer: Peer = { pc, candidates: [], media: { audio: new MediaStream(), camera: new MediaStream(), screen: new MediaStream(), status: 'new' }, queue: Promise.resolve(),
       ready: offerer ? this.bindTracks(pc) : Promise.resolve() };
     this.peers.set(id, peer);
     pc.onicecandidate = event => { if (event.candidate) this.send(id, { candidate: event.candidate.toJSON() }); };
     pc.ontrack = event => {
-      const stream = pc.getTransceivers().indexOf(event.transceiver) === 2 ? peer.media.screen : peer.media.camera;
+      // Audio cannot depend on the camera producing a video frame.
+      const stream = event.track.kind === 'audio' ? peer.media.audio : pc.getTransceivers().indexOf(event.transceiver) === 2 ? peer.media.screen : peer.media.camera;
       stream.addTrack(event.track);
       event.track.onunmute = () => this.changed();
       this.changed();

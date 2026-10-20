@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:communication": "node --test scripts/communication-viewport.test.mjs scripts/chat.test.mjs scripts/moto-z3.test.mjs",
     "test:calls:ui": "playwright test --config=playwright.calls.config.mjs",
+    "test:meetings": "node --test scripts/meetings.test.mjs",
     "test:mail": "node --test scripts/mail-document.test.mjs",
     "test:ai": "node --test scripts/ai.test.mjs",
     "test:ai:ui": "playwright test --config=playwright.ai.config.mjs",

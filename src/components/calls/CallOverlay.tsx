@@ -7,24 +7,32 @@ import { useCalls } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
 import { initials } from '../../lib/chat';
 import { mediaError } from '../../lib/calls';
+import RemoteAudio from './RemoteAudio';
 
-export function MediaTile({ stream, name, muted = false, visible = true, screen = false, revision = 0, fit = false, compact = false }: {
+export function MediaTile({ stream, name, muted = false, visible = true, screen = false, fit = false, compact = false }: {
   stream?: MediaStream | null; name: string; muted?: boolean; visible?: boolean; screen?: boolean; revision?: number; fit?: boolean; compact?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [blocked, setBlocked] = useState(false);
+  const track = stream?.getVideoTracks()[0];
   useEffect(() => {
     const element = video.current;
     if (!element) return;
     element.srcObject = stream || null;
-    if (stream) void element.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
     return () => { element.srcObject = null; };
-  }, [stream, revision]);
+  }, [stream, track]);
+  useEffect(() => {
+    const element = video.current;
+    if (!element || !track) return;
+    let cancelled = false;
+    void element.play().then(() => { if (!cancelled) setBlocked(false); }).catch(error => { if (!cancelled && error?.name !== 'AbortError') setBlocked(true); });
+    return () => { cancelled = true; };
+  }, [stream, track]);
   return <div className={`relative flex items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#182133] ${screen ? 'min-h-44 aspect-video max-h-[55dvh]' : compact ? 'aspect-video max-h-40' : fit ? 'min-h-44 aspect-[4/3] sm:aspect-auto sm:h-full sm:min-h-0' : 'min-h-44 aspect-[4/3]'}`}>
     <video ref={video} autoPlay playsInline muted={muted} aria-label={name} className={`h-full w-full ${screen ? 'object-contain' : 'object-cover'} ${visible ? '' : 'opacity-0'}`} />
     {!visible && <span className="absolute flex h-20 w-20 items-center justify-center rounded-full bg-[#5470F4]/25 text-2xl font-semibold text-[#afc5ff]">{initials(name)}</span>}
     <span className="absolute bottom-3 left-3 max-w-[85%] truncate rounded-lg bg-black/60 px-2 py-1 text-xs text-white">{name}</span>
-    {blocked && !muted && <button onClick={() => void video.current?.play().then(() => setBlocked(false)).catch(() => {})} className="absolute rounded-xl bg-[#5470F4] px-3 py-2 text-sm">Enable audio / video</button>}
+    {blocked && <button onClick={() => void video.current?.play().then(() => setBlocked(false)).catch(() => {})} className="absolute rounded-xl bg-[#5470F4] px-3 py-2 text-sm">Play video</button>}
   </div>;
 }
 
@@ -90,6 +98,10 @@ export default function CallOverlay() {
       <div className="flex gap-2"><button onClick={calls.decline} className={`${button} flex-1 bg-red-600`}><PhoneOff size={17} />Decline</button><Link onClick={calls.dismissIncoming} href={`/meet?conversation=${incoming.conversationId}&call=${incoming.id}&mode=${incoming.mode}`} className={`${button} flex-1 bg-emerald-600`}><Phone size={17} />Answer</Link></div>
     </div>}
     {meeting && engine && <>
+      <div className="fixed left-4 top-20 z-[120] flex max-w-[calc(100vw-2rem)] flex-col gap-2" aria-live="polite">{meeting.participants.filter(person => person.socketId !== engine.socket.id).map(person => {
+        const stream = engine.peers.get(person.socketId)?.media.audio;
+        return stream ? <RemoteAudio key={person.socketId} stream={stream} name={person.name} /> : null;
+      })}</div>
       {minimized && <div className="fixed bottom-24 right-4 z-[100] flex items-center gap-3 rounded-2xl border border-[#5470F4]/40 bg-[#13213b] p-3 text-white shadow-xl"><span className="h-2 w-2 animate-pulse rounded-full bg-green-400" /><button onClick={() => calls.setMinimized(false)} className="text-sm">Return to call · {duration}</button><button disabled={busy} onClick={() => void calls.leave()} aria-label="Leave call" className="rounded-lg bg-red-600 p-2"><PhoneOff size={18} /></button></div>}
       <div ref={root} role="dialog" aria-modal={!minimized} aria-label="Meeting" tabIndex={-1} className={`${minimized ? 'hidden' : 'flex'} fixed inset-0 z-[100] flex-col bg-[#0B0F19] text-white outline-none`}>
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6"><div className="min-w-0"><h2 className="truncate font-semibold">{meeting.title}</h2><p className="text-xs text-gray-400">{duration} · {meeting.participants.length} / 8 participants</p></div><div className="flex gap-1"><button className="rounded-xl p-3 hover:bg-white/10" onClick={() => void action(async () => { if (document.fullscreenElement) await document.exitFullscreen(); else await root.current?.requestFullscreen(); })} aria-label="Toggle full screen"><Maximize2 size={19} /></button><button className="rounded-xl p-3 hover:bg-white/10" onClick={() => calls.setMinimized(true)} aria-label="Minimize meeting"><Minimize2 size={20} /></button></div></header>
@@ -100,7 +112,7 @@ export default function CallOverlay() {
               {meeting.participants.map(person => {
                 const local = person.socketId === engine.socket.id;
                 const remote = engine.peers.get(person.socketId)?.media;
-                return <div key={person.socketId} className="relative min-h-0"><MediaTile name={`${person.name}${local ? ' (you)' : ''}`} fit={!presenting} compact={presenting} muted={local} visible={person.camera} stream={local ? engine.local : remote?.camera} revision={revision} /><div className="absolute right-3 top-3 flex gap-2 rounded-lg bg-black/50 p-2">{person.handRaised && <Hand size={16} className="text-yellow-300" />}{!person.microphone && <MicOff size={16} className="text-red-300" />}{!local && remote?.status !== 'connected' && <span className="text-xs">{remote?.status === 'failed' ? 'Connection failed' : 'Connecting…'}</span>}</div></div>;
+                return <div key={person.socketId} className="relative min-h-0"><MediaTile name={`${person.name}${local ? ' (you)' : ''}`} fit={!presenting} compact={presenting} muted visible={person.camera} stream={local ? engine.local : remote?.camera} revision={revision} /><div className="absolute right-3 top-3 flex gap-2 rounded-lg bg-black/50 p-2">{person.handRaised && <Hand size={16} className="text-yellow-300" />}{!person.microphone && <MicOff size={16} className="text-red-300" />}{!local && remote?.status !== 'connected' && <span className="text-xs">{remote?.status === 'failed' ? 'Connection failed' : 'Connecting…'}</span>}</div></div>;
               })}
             </div>
             {meeting.participants.length === 1 && <p className="mt-6 text-center text-sm text-gray-400">Waiting for teammates. Conversation members can join using the meeting link.</p>}

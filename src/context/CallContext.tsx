@@ -10,7 +10,7 @@ import CallOverlay from '../components/calls/CallOverlay';
 type CallContextValue = {
   meeting: Meeting | null; incoming: Invitation | null; engine: MeetingMedia | null; connected: boolean;
   busy: boolean; error: string; notice: string; minimized: boolean; revision: number;
-  join: (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null) => Promise<boolean>;
+  join: (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null, meetingId?: string) => Promise<boolean>;
   leave: (endForAll?: boolean) => Promise<void>;
   update: (state: Partial<{ microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean }>) => Promise<void>;
   decline: () => void; dismissIncoming: () => void; setMinimized: (value: boolean) => void;
@@ -79,7 +79,7 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
     return () => clearTimeout(timer);
   }, [incoming]);
 
-  const join = useCallback(async (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null) => {
+  const join = useCallback(async (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null, meetingId?: string) => {
     if (joining.current || media.current) return false;
     joining.current = true; setBusy(true); setError(''); setNotice(''); latestMeeting.current = null;
     let stream: MediaStream | null = null;
@@ -93,7 +93,7 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
       stream.getAudioTracks().forEach(track => { track.enabled = microphone; });
       if (!video) stream.getVideoTracks().forEach(track => { stream!.removeTrack(track); track.stop(); });
       if (!client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
-      const result = await callCommand<{ call: Meeting }>(client, 'call:join', { conversationId, callId, mode: video ? 'video' : 'audio', microphone, camera: video });
+      const result = await callCommand<{ call: Meeting }>(client, 'call:join', { conversationId, callId, meetingId, mode: video ? 'video' : 'audio', microphone, camera: video });
       if (!client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
       const engine = new MeetingMedia(client, result.call, stream, { iceServers: config.iceServers }, changed, setError,
         () => { void callCommand(client!, 'call:state', { conversationId, callId: result.call.id, sharing: false }).catch(failure => setError(failure.message)); });
