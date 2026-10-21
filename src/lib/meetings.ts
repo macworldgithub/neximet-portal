@@ -10,7 +10,7 @@ export type MeetingHistory = {
   startedBy: MeetingPerson | null; invitedUsers: (MeetingPerson | null)[];
   attendance: { user: MeetingPerson | null; joinedAt: string; leftAt: string | null }[];
   startedAt: string; endedAt: string | null; durationSeconds: number; attendanceSeconds: number;
-  endReason: string | null; outcome: 'unanswered' | 'attended' | 'in_progress' | 'missed' | 'declined' | 'invited';
+  endReason: string | null; outcome: 'unanswered' | 'attended' | 'in_progress' | 'ringing' | 'missed' | 'declined' | 'invited';
 };
 export const timezones = ['Asia/Karachi', 'UTC', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Australia/Sydney'];
 export function wallTime(value: Date | string, timezone: string) {

@@ -16,6 +16,7 @@ type CallContextValue = {
   join: (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null, meetingId?: string) => Promise<boolean>;
   leave: (endForAll?: boolean) => Promise<void>;
   invite: (participantIds: string[]) => Promise<void>;
+  answer: () => Promise<boolean>;
   update: (state: Partial<{ microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean }>) => Promise<void>;
   decline: () => void; dismissIncoming: () => void; setMinimized: (value: boolean) => void;
   report: (message: string) => void; clearNotice: () => void;
@@ -34,11 +35,13 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
   const media = useRef<MeetingMedia | null>(null);
   const [engine, setEngine] = useState<MeetingMedia | null>(null);
   const joining = useRef(false);
+  const generation = useRef(0);
+  const endedWhileJoining = useRef(new Set<string>());
   const pendingSignals = useRef<{ callId: string; from: string; signal: Parameters<MeetingMedia['signal']>[1] }[]>([]);
   const latestMeeting = useRef<Meeting | null>(null);
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [incoming, setIncoming] = useState<Invitation | null>(null);
-  const ringtone = useCallRingtone(userId, incoming?.id);
+  const ringtone = useCallRingtone(userId, incoming?.id, meeting?.oneToOne && meeting.phase === 'ringing' && meeting.hostId === userId ? meeting.id : undefined);
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -53,15 +56,17 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
 
   useEffect(() => {
     if (!token) return;
+    generation.current++;
     const client = io(new URL(API_URL).origin, { path: '/api/socket.io', transports: ['websocket'], auth: { token }, reconnectionDelayMax: 5000 });
     socket.current = client;
     client.on('connect', () => setConnected(true));
     client.on('disconnect', () => {
+      generation.current++;
       setConnected(false); setIncoming(null);
       if (media.current) { cleanup(); setNotice('The call disconnected. Your microphone, camera and screen sharing have stopped. Rejoin when connected.'); }
     });
     client.on('connect_error', () => setConnected(false));
-    client.on('call:incoming', (invitation: Invitation) => { if (!media.current && !joining.current && invitation.expiresAt > Date.now()) setIncoming(invitation); });
+    client.on('call:incoming', (invitation: Invitation) => { if (!media.current && invitation.expiresAt > Date.now()) setIncoming(invitation); });
     client.on('call:updated', (value: Meeting) => {
       if (joining.current) latestMeeting.current = value;
       const current = media.current;
@@ -72,10 +77,11 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
       if (current && current.meeting.id === value.callId) current.signal(value.from, value.signal);
       else if (joining.current && pendingSignals.current.length < 100) pendingSignals.current.push(value);
     });
-    client.on('call:ended', ({ callId }) => {
+    client.on('call:ended', ({ callId, reason }) => {
+      if (joining.current) endedWhileJoining.current.add(callId);
       void closeCallNotification(callId);
       setIncoming(current => current?.id === callId ? null : current);
-      if (media.current?.meeting.id === callId) { cleanup(); setNotice('The host ended the meeting.'); }
+      if (media.current?.meeting.id === callId) { cleanup(); setNotice(reason === 'no_answer' ? 'No answer. The call has ended.' : reason === 'declined' ? 'The call was declined.' : reason === 'participant_left' ? 'The other person left the call.' : 'The host ended the meeting.'); }
     });
     client.on('call:dismissed', ({ callId }) => { setIncoming(current => current?.id === callId ? null : current); void closeCallNotification(callId); });
     client.on('call:declined', ({ callId, name }) => { if (media.current?.meeting.id === callId) setNotice(`${name} declined the call.`); });
@@ -103,8 +109,10 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
   }, [incoming]);
 
   const join = useCallback(async (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null, meetingId?: string) => {
-    if (joining.current || media.current) return false;
+    if (joining.current || media.current) { if (preview && preview !== media.current?.local) preview.getTracks().forEach(track => track.stop()); return false; }
+    const request = generation.current;
     joining.current = true; setBusy(true); setError(''); setNotice(''); latestMeeting.current = null;
+    endedWhileJoining.current.clear();
     let stream: MediaStream | null = null;
     let client: Socket | null = null;
     try {
@@ -115,11 +123,13 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
       stream = preview || await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: video ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false });
       stream.getAudioTracks().forEach(track => { track.enabled = microphone; });
       if (!video) stream.getVideoTracks().forEach(track => { stream!.removeTrack(track); track.stop(); });
-      if (!client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
+      if (request !== generation.current || !client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
       const result = await callCommand<{ call: Meeting }>(client, 'call:join', { conversationId, callId, meetingId, mode: video ? 'video' : 'audio', microphone, camera: video });
-      if (!client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
+      if (request !== generation.current || !client.connected || client !== socket.current) throw new Error('The call disconnected. Please try again.');
+      if (endedWhileJoining.current.has(result.call.id)) throw new Error('The call ended before you could join.');
       const engine = new MeetingMedia(client, result.call, stream, { iceServers: config.iceServers }, changed, setError,
-        () => { void callCommand(client!, 'call:state', { conversationId, callId: result.call.id, sharing: false }).catch(failure => setError(failure.message)); });
+        () => { void callCommand(client!, 'call:state', { conversationId, callId: result.call.id, sharing: false }).catch(failure => setError(failure.message)); },
+        kind => { void callCommand(client!, 'call:state', { conversationId, callId: result.call.id, ...(kind === 'audio' ? { microphone: false } : { camera: false }) }).catch(failure => setError(failure.message)); });
       media.current = engine;
       setEngine(engine);
       const received = latestMeeting.current as Meeting | null;
@@ -132,10 +142,14 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
       stream?.getTracks().forEach(track => track.stop());
       // An acknowledgement can be lost after the server joins. Disconnecting
       // also removes that membership before a subsequent retry.
-      if (client?.connected && stream) { client.disconnect(); client.connect(); }
+      if (client?.connected && stream && !(failure instanceof Error && 'acknowledged' in failure)) { client.disconnect(); client.connect(); }
       setError(mediaError(failure)); return false;
     } finally { joining.current = false; setBusy(false); }
   }, [changed]);
+  const answer = useCallback(async () => {
+    if (!incoming || incoming.expiresAt <= Date.now()) return false;
+    return join(incoming.conversationId, incoming.mode === 'video', true, incoming.id, undefined, incoming.meetingId);
+  }, [incoming, join]);
 
   const leave = useCallback(async (endForAll = false) => {
     const engine = media.current;
@@ -169,7 +183,7 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
   const dismissIncoming = () => { if (incoming) void closeCallNotification(incoming.id); setIncoming(null); };
 
   return <CallContext.Provider value={{ meeting, incoming, engine, connected, busy, error, notice, minimized, revision,
-    ...ringtone, join, leave, update, invite, decline, dismissIncoming, setMinimized, report: setError, clearNotice: () => { setNotice(''); setError(''); } }}>
+    ...ringtone, join, leave, update, invite, answer, decline, dismissIncoming, setMinimized, report: setError, clearNotice: () => { setNotice(''); setError(''); } }}>
     {children}<CallOverlay />
   </CallContext.Provider>;
 }

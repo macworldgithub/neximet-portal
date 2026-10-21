@@ -3,12 +3,12 @@ import { callBrowserOptions } from '../../scripts/call-test-media.mjs';
 import { readFile } from 'node:fs/promises';
 
 const api = 'http://127.0.0.1:4012/api';
-async function account(browser, request, index, viewport) {
+async function account(browser, request, index, viewport, userAgent) {
   const result = await (await request.post(`${api}/auth/login`, { data: { email: `chat-qa-${index}@example.test`, password: 'chat-qa-only' } })).json();
   // Independent browser processes give each synthetic participant its own
   // capture device, matching calls between separate computers.
   const instance = await browser.browserType().launch(callBrowserOptions);
-  const context = await instance.newContext({ permissions: ['camera', 'microphone'], ...(viewport ? { viewport, isMobile: true, hasTouch: true } : {}) });
+  const context = await instance.newContext({ permissions: ['camera', 'microphone'], ...(viewport ? { viewport, isMobile: true, hasTouch: true } : {}), ...(userAgent ? { userAgent } : {}) });
   await context.addInitScript(token => localStorage.setItem('neximet_token', token), result.token);
   await context.addInitScript(() => {
     const nativeStop = MediaStreamTrack.prototype.stop;
@@ -23,9 +23,9 @@ async function account(browser, request, index, viewport) {
   const page = await context.newPage();
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const chats = await (await request.get(`${api}/chat/conversations`, { headers: { Authorization: `Bearer ${result.token}` } })).json();
-  return { context, page, token: result.token, chats: chats.conversations, errors, close: () => instance.close() };
+  return { context, page, token: result.token, user: result.user, chats: chats.conversations, errors, close: () => instance.close() };
 }
-async function connected(page) { await expect(page.getByText('● Calling connected')).toBeVisible({ timeout: 45000 }); }
+async function connected(page) { await expect(page.getByText('● Calling service ready')).toBeVisible({ timeout: 45000 }); }
 async function join(page) {
   await connected(page);
   await page.getByRole('button', { name: 'Start or join video call', exact: true }).click();
@@ -84,6 +84,13 @@ test('voice-only audio plays both ways before camera starts and survives toggles
     for (const person of [alice, bob]) await expect.poll(() => soundLevel(person.page)).toBeGreaterThan(0.01);
     for (const person of [alice, bob]) await person.page.getByRole('button', { name: 'Turn camera off', exact: true }).click();
     await bob.page.getByRole('button', { name: 'Mute microphone', exact: true }).click();
+    await expect.poll(() => soundLevel(alice.page)).toBeLessThan(0.001);
+    await bob.page.getByRole('button', { name: 'Unmute microphone', exact: true }).click();
+    await expect.poll(() => soundLevel(alice.page)).toBeGreaterThan(0.01);
+    await bob.page.locator('video[aria-label="Sam Rivera (you)"]').evaluate(video => {
+      const microphone = video.srcObject.getAudioTracks()[0]; microphone.stop(); microphone.dispatchEvent(new Event('ended'));
+    });
+    await expect(bob.page.getByRole('button', { name: 'Unmute microphone', exact: true })).toBeVisible();
     await expect.poll(() => soundLevel(alice.page)).toBeLessThan(0.001);
     await bob.page.getByRole('button', { name: 'Unmute microphone', exact: true }).click();
     await expect.poll(() => soundLevel(alice.page)).toBeGreaterThan(0.01);
@@ -192,9 +199,7 @@ test('real two-browser voice/video, presentation, controls, navigation and host 
     await expect(alice.page.getByText('Preview is private. You have not joined the meeting.')).toBeVisible();
     await join(alice.page);
     await expect(bob.page.getByRole('dialog', { name: 'Incoming video call' })).toBeVisible();
-    await bob.page.getByRole('link', { name: 'Answer', exact: true }).click();
-    await connected(bob.page);
-    await bob.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
+    await bob.page.getByRole('button', { name: 'Answer', exact: true }).click();
     await expect(alice.page.getByText('2 / 8 participants', { exact: false })).toBeVisible();
     await expect.poll(() => bob.page.locator('video[aria-label="Alex Morgan"]').evaluate(video => video.videoWidth), { timeout: 30000 }).toBeGreaterThan(0);
     expect(await bob.page.locator('video[aria-label="Alex Morgan"]').evaluate(video => video.srcObject?.getTracks().map(track => track.kind))).toEqual(['video']);
@@ -301,16 +306,14 @@ test('all-user selection starts a multi-invite voice meeting and adds people dur
     await alice.page.screenshot({ path: 'test-results/calls/meet-home.png' });
     await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
     await expect(maya.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeVisible();
-    await maya.page.getByRole('link', { name: 'Answer', exact: true }).click(); await connected(maya.page);
-    await maya.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
+    await maya.page.getByRole('button', { name: 'Answer', exact: true }).click();
     await expect(maya.page.getByRole('button', { name: 'Turn camera on', exact: true })).toBeVisible();
     await alice.page.getByRole('button', { name: 'Show participants', exact: true }).click();
     await alice.page.getByRole('button', { name: 'Add participant', exact: true }).click();
     await alice.page.getByRole('button', { name: 'Add Sam Rivera', exact: true }).click();
     await alice.page.getByRole('button', { name: 'Send invitations', exact: true }).click();
     await expect(bob.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeVisible();
-    await bob.page.getByRole('link', { name: 'Answer', exact: true }).click(); await connected(bob.page);
-    await bob.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
+    await bob.page.getByRole('button', { name: 'Answer', exact: true }).click();
     for (const person of [alice, bob, maya]) await expect(person.page.getByText('3 / 8 participants', { exact: false })).toBeVisible();
     await monitorSound(maya.page, 'Alex Morgan'); await expect.poll(() => soundLevel(maya.page)).toBeGreaterThan(0.01);
     expect(await maya.page.locator('video[aria-label="Maya Patel (you)"]').evaluate(video => video.srcObject.getVideoTracks().length)).toBe(0);
@@ -354,14 +357,15 @@ test('incoming ringtone respects mute, stops on decline and answer, and recovers
     const stopped = await bob.page.evaluate(() => window.__ringStarts);
     await bob.page.waitForTimeout(3200);
     expect(await bob.page.evaluate(() => window.__ringStarts)).toBe(stopped);
-    await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
+    await expect(alice.page.getByText('The call was declined.', { exact: true })).toBeVisible();
     await bob.page.reload(); await connected(bob.page);
     await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
     await expect(bob.page.getByRole('button', { name: 'Enable ringtone', exact: true })).toBeVisible();
     await bob.page.getByRole('button', { name: 'Enable ringtone', exact: true }).click();
     await expect.poll(() => bob.page.evaluate(() => window.__ringStarts)).toBeGreaterThan(0);
-    const answerLink = await bob.page.getByRole('link', { name: 'Answer', exact: true }).getAttribute('href');
-    const bobId = bob.chats.find(chat => chat.kind === 'direct').members.find(member => member.user.name === 'Sam Rivera').user._id;
+    const history = await (await request.get(`${api}/meetings/history`, { headers: { Authorization: `Bearer ${bob.token}` } })).json();
+    const ringing = history.history.find(item => !item.endedAt && item.conversation === direct._id);
+    const answerLink = `/meet?conversation=${direct._id}&call=${ringing.callId}&mode=audio`, bobId = bob.user.id;
     // The PWA's native Answer action sends this message to the existing app.
     await bob.page.evaluate(({ answerLink, bobId }) => {
       const url = new URL(answerLink, location.origin);
@@ -373,6 +377,69 @@ test('incoming ringtone respects mute, stops on decline and answer, and recovers
     await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
     expect(alice.errors).toEqual([]); expect(bob.errors).toEqual([]);
   } finally { await alice.close(); await bob.close(); }
+});
+
+test('phone-like calling requires an invitee, rings before answer, and answers with one tap', async ({ browser, request }) => {
+  const alice = await account(browser, request, 0), bob = await account(browser, request, 1, { width: 390, height: 844 });
+  try {
+    await Promise.all([alice.page.goto('/meet'), bob.page.goto('/meet')]);
+    await connected(alice.page); await connected(bob.page);
+    const start = alice.page.getByRole('button', { name: 'Start or join video call', exact: true });
+    await expect(start).toBeDisabled();
+    await expect(alice.page.getByText('Add at least one participant to start a call.', { exact: true })).toBeVisible();
+    expect(await alice.page.locator('nav[aria-label="Meetings workspace"]').evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(17, 24, 39)');
+    await alice.page.getByRole('button', { name: 'Add participant', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Add Sam Rivera', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Voice call', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
+    await expect(alice.page.getByRole('region', { name: 'Outgoing call' })).toBeVisible();
+    await expect(alice.page.getByText('Calling Sam Rivera', { exact: true })).toBeVisible();
+    await expect(alice.page.getByTestId('participant-gallery')).toBeHidden();
+    await alice.page.screenshot({ path: 'test-results/calls/outgoing-call.png' });
+    await bob.page.getByRole('button', { name: 'Answer', exact: true }).click();
+    await expect(bob.page.getByRole('dialog', { name: 'Meeting', exact: true })).toBeVisible();
+    await expect(alice.page.getByRole('region', { name: 'Outgoing call' })).toBeHidden();
+    await monitorSound(alice.page, 'Sam Rivera'); await expect.poll(() => soundLevel(alice.page)).toBeGreaterThan(0.01);
+    await bob.page.getByRole('button', { name: 'Leave call', exact: true }).click();
+    await expect(alice.page.getByRole('dialog', { name: 'Meeting', exact: true })).toBeHidden();
+    await expect(alice.page.getByText('The other person left the call.', { exact: true })).toBeVisible();
+    expect(alice.errors).toEqual([]); expect(bob.errors).toEqual([]);
+  } finally { await alice.close(); await bob.close(); }
+});
+
+test('phone screen sharing uses available capture support and unsupported phones keep receiving audio', async ({ browser, request }) => {
+  const alice = await account(browser, request, 0);
+  const phone = await account(browser, request, 1, { width: 390, height: 844 }, 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Version/27.0 Mobile Safari/604.1');
+  try {
+    const direct = alice.chats.find(chat => chat.kind === 'direct');
+    await phone.context.addInitScript(() => { Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', { configurable: true, value: undefined }); });
+    await Promise.all([alice.page.goto(`/meet?conversation=${direct._id}&mode=audio`), phone.page.goto('/meet')]);
+    await connected(alice.page); await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
+    await phone.page.getByRole('button', { name: 'Answer', exact: true }).click();
+    await phone.page.getByRole('button', { name: 'Share screen', exact: true }).click();
+    await expect(phone.page.getByText(/This browser cannot broadcast your phone’s screen/)).toBeVisible();
+    await monitorSound(phone.page, 'Alex Morgan'); await expect.poll(() => soundLevel(phone.page)).toBeGreaterThan(0.01);
+    await phone.page.getByRole('button', { name: 'Close screen sharing help' }).click();
+    // Simulate a mobile browser's OS capture result. RTP and rendering remain real.
+    await phone.page.evaluate(() => {
+      Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', { configurable: true, value: async () => {
+        const canvas = document.createElement('canvas'); canvas.width = 390; canvas.height = 844;
+        const draw = () => { const ctx = canvas.getContext('2d'); ctx.fillStyle = '#16a34a'; ctx.fillRect(0, 0, 390, 844); };
+        draw(); window.__mobilePaint = setInterval(draw, 100); return canvas.captureStream(10);
+      } });
+    });
+    await phone.page.getByRole('button', { name: 'Raise hand', exact: true }).click();
+    await expect(phone.page.getByRole('button', { name: 'Lower hand', exact: true })).toBeVisible();
+    await phone.page.getByRole('button', { name: 'Share screen', exact: true }).click();
+    await expect.poll(() => alice.page.locator('video[aria-label="Sam Rivera is presenting"]').evaluate(video => video.videoWidth), { timeout: 15000 }).toBeGreaterThan(0);
+    await alice.page.getByRole('button', { name: 'Focus presentation by Sam Rivera', exact: true }).click();
+    await expect(alice.page.getByTestId('participant-gallery')).toBeHidden();
+    await phone.page.getByRole('button', { name: 'Stop presenting', exact: true }).click();
+    await expect(alice.page.getByTestId('participant-gallery')).toBeVisible();
+    await phone.page.evaluate(() => clearInterval(window.__mobilePaint));
+    await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
+    expect(alice.errors).toEqual([]); expect(phone.errors).toEqual([]);
+  } finally { await alice.close(); await phone.close(); }
 });
 
 test('three-person group media connects every peer and host handoff survives a closed tab', async ({ browser, request }) => {

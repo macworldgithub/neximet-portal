@@ -1,7 +1,7 @@
 import type { Socket } from 'socket.io-client';
 
 export type CallParticipant = { socketId: string; userId: string; name: string; microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean };
-export type Meeting = { id: string; conversationId: string; meetingId?: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; participants: CallParticipant[]; invitedUserIds?: string[] };
+export type Meeting = { id: string; conversationId: string; meetingId?: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; connectedAt?: string | null; phase?: 'ringing' | 'connected' | 'waiting'; oneToOne?: boolean; ringUntil?: number | null; participants: CallParticipant[]; invitedUserIds?: string[]; invitedPeople?: { id: string; name: string }[] };
 export type Invitation = Meeting & { callerName: string; expiresAt: number };
 export type RemoteMedia = { audio: MediaStream; camera: MediaStream; screen: MediaStream; status: RTCPeerConnectionState };
 type Signal = { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
@@ -12,7 +12,7 @@ export async function callCommand<T = Record<string, never>>(socket: Socket, eve
   let result;
   try { result = await socket.timeout(12000).emitWithAck(event, payload); }
   catch { throw new Error('The call server did not respond. Please try again.'); }
-  if (!result?.success) throw new Error(result?.message || 'Call request failed');
+  if (!result?.success) throw Object.assign(new Error(result?.message || 'Call request failed'), { acknowledged: true });
   return result as T;
 }
 
@@ -25,7 +25,17 @@ export class MeetingMedia {
   closed = false;
   constructor(public socket: Socket, public meeting: Meeting, public local: MediaStream,
     private configuration: RTCConfiguration, private changed: () => void, private report: (message: string) => void,
-    private sharingStopped: () => void) {}
+    private sharingStopped: () => void, private localEnded?: (kind: 'audio' | 'video') => void) {
+    local.getTracks().forEach(track => this.watchLocal(track));
+  }
+  private watchLocal(track: MediaStreamTrack) {
+    track.addEventListener('ended', () => {
+      if (this.closed || !this.local.getTracks().includes(track)) return;
+      this.local.removeTrack(track); this.changed();
+      this.localEnded?.(track.kind === 'audio' ? 'audio' : 'video');
+      this.report(track.kind === 'audio' ? 'Your microphone stopped. Unmute to reconnect it or select another microphone in Device settings.' : 'Your camera stopped. Turn it on again or select another camera in Device settings.');
+    }, { once: true });
+  }
 
   private payload() { return { conversationId: this.meeting.conversationId, callId: this.meeting.id }; }
   private send(to: string, signal: Signal) {
@@ -56,9 +66,10 @@ export class MeetingMedia {
     };
     let retries = 0;
     pc.onconnectionstatechange = () => {
+      if (this.closed) return;
       peer.media.status = pc.connectionState; this.changed();
       if (pc.connectionState === 'failed') {
-        if (this.socket.id! < id && retries++ < 2) void this.offer(id, peer, true).catch(error => this.report(error.message));
+        if (this.socket.id! < id && retries++ < 2) void this.offer(id, peer, true).catch(error => { if (!this.closed) this.report(error.message); });
         else this.report('A participant could not connect. Check your network or leave and rejoin.');
       }
     };
@@ -86,7 +97,7 @@ export class MeetingMedia {
     this.changed();
   }
   signal(from: string, signal: Signal) {
-    if (this.closed) return;
+    if (this.closed || !this.meeting.participants.some(person => person.socketId === from)) return;
     const peer = this.peer(from);
     peer.queue = peer.queue.then(async () => {
       await peer.ready;
@@ -128,34 +139,46 @@ export class MeetingMedia {
     }
     try { await this.replace(1, track); }
     catch (error) { track?.stop(); throw error; }
+    if (this.closed) { track?.stop(); return; }
     this.local.getVideoTracks().forEach(old => { this.local.removeTrack(old); old.stop(); });
     if (!enabled) this.lastCameraStop = Date.now();
-    if (track) this.local.addTrack(track);
+    if (track) { this.local.addTrack(track); this.watchLocal(track); }
     this.changed();
   }
-  async microphone(deviceId: string) {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true } });
+  async microphone(deviceId?: string) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...(deviceId ? { deviceId: { exact: deviceId } } : {}), echoCancellation: true, noiseSuppression: true } });
     const track = stream.getAudioTracks()[0];
     if (this.closed) { track.stop(); return; }
-    track.enabled = this.local.getAudioTracks()[0]?.enabled ?? true;
+    track.enabled = this.local.getAudioTracks()[0]?.enabled ?? false;
     try { await this.replace(0, track); }
     catch (error) { track.stop(); throw error; }
+    if (this.closed) { track.stop(); return; }
     this.local.getAudioTracks().forEach(old => { this.local.removeTrack(old); old.stop(); });
-    this.local.addTrack(track); this.changed();
+    this.local.addTrack(track); this.watchLocal(track); this.changed();
+  }
+  async setMicrophone(enabled: boolean) {
+    if (enabled && !this.local.getAudioTracks().some(track => track.readyState === 'live')) await this.microphone();
+    if (this.closed) return;
+    this.local.getAudioTracks().forEach(track => { track.enabled = enabled; }); this.changed();
   }
   async share() {
-    if (!navigator.mediaDevices.getDisplayMedia) throw new Error('Screen sharing is unavailable in this browser. Use a supported desktop browser.');
+    if (this.display || this.closed) return;
+    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('This browser cannot broadcast your screen. You can still view shared screens. Try a browser with screen capture support.');
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); }
     catch (error) {
       if (error instanceof DOMException && error.name === 'NotAllowedError') throw new Error('Screen sharing was canceled or permission was denied.');
+      if (error instanceof DOMException && error.name === 'NotSupportedError') throw new Error('Your browser cannot broadcast this device’s screen. You can still view shared presentations.');
       throw error;
     }
     if (this.closed) { stream.getTracks().forEach(track => track.stop()); return; }
+    const track = stream.getVideoTracks().find(item => item.readyState === 'live');
+    if (!track) { stream.getTracks().forEach(item => item.stop()); throw new Error('The browser did not provide a screen video track. Try sharing again.'); }
     this.display = stream;
-    try { await this.replace(2, stream.getVideoTracks()[0]); }
+    try { await this.replace(2, track); }
     catch (error) { stream.getTracks().forEach(track => track.stop()); this.display = null; throw error; }
-    stream.getVideoTracks()[0].onended = () => { void this.stopSharing().then(this.sharingStopped).catch(error => this.report(error.message)); };
+    if (this.closed || track.readyState !== 'live') { await this.stopSharing(); return; }
+    track.onended = () => { void this.stopSharing().then(this.sharingStopped).catch(error => { if (!this.closed) this.report(error.message); }); };
     this.changed();
   }
   async stopSharing() {
