@@ -2,28 +2,34 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
+import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../lib/api';
 import { callCommand, mediaError, MeetingMedia, type Meeting, type Invitation } from '../lib/calls';
 import CallOverlay from '../components/calls/CallOverlay';
+import { useCallRingtone } from '../components/calls/useCallRingtone';
+import { closeCallNotification } from '../lib/push';
 
 type CallContextValue = {
   meeting: Meeting | null; incoming: Invitation | null; engine: MeetingMedia | null; connected: boolean;
   busy: boolean; error: string; notice: string; minimized: boolean; revision: number;
   join: (conversationId: string, video: boolean, microphone: boolean, callId?: string, preview?: MediaStream | null, meetingId?: string) => Promise<boolean>;
   leave: (endForAll?: boolean) => Promise<void>;
+  invite: (participantIds: string[]) => Promise<void>;
   update: (state: Partial<{ microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean }>) => Promise<void>;
   decline: () => void; dismissIncoming: () => void; setMinimized: (value: boolean) => void;
   report: (message: string) => void; clearNotice: () => void;
+  ringingEnabled: boolean; ringingBlocked: boolean; toggleRinging: () => Promise<void>; enableRinging: () => Promise<void>;
 };
 const CallContext = createContext<CallContextValue | null>(null);
 
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
-  return <CallState key={user?.id || 'signed-out'} token={token}>{children}</CallState>;
+  return <CallState key={user?.id || 'signed-out'} token={token} userId={user?.id || ''}>{children}</CallState>;
 }
 
-function CallState({ children, token }: { children: React.ReactNode; token: string | null }) {
+function CallState({ children, token, userId }: { children: React.ReactNode; token: string | null; userId: string }) {
+  const router = useRouter();
   const socket = useRef<Socket | null>(null);
   const media = useRef<MeetingMedia | null>(null);
   const [engine, setEngine] = useState<MeetingMedia | null>(null);
@@ -32,6 +38,7 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
   const latestMeeting = useRef<Meeting | null>(null);
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [incoming, setIncoming] = useState<Invitation | null>(null);
+  const ringtone = useCallRingtone(userId, incoming?.id);
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,16 +73,32 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
       else if (joining.current && pendingSignals.current.length < 100) pendingSignals.current.push(value);
     });
     client.on('call:ended', ({ callId }) => {
+      void closeCallNotification(callId);
       setIncoming(current => current?.id === callId ? null : current);
       if (media.current?.meeting.id === callId) { cleanup(); setNotice('The host ended the meeting.'); }
     });
+    client.on('call:dismissed', ({ callId }) => { setIncoming(current => current?.id === callId ? null : current); void closeCallNotification(callId); });
     client.on('call:declined', ({ callId, name }) => { if (media.current?.meeting.id === callId) setNotice(`${name} declined the call.`); });
     return () => { client.removeAllListeners(); client.disconnect(); socket.current = null; media.current?.close(); media.current = null; };
   }, [token, cleanup]);
 
   useEffect(() => {
+    if (!token || !('serviceWorker' in navigator)) return;
+    const message = (event: MessageEvent) => {
+      if (event.data?.type === 'DISMISS_CALL_NOTIFICATION') {
+        setIncoming(current => current?.id === event.data.callId ? null : current); return;
+      }
+      if (event.data?.type !== 'OPEN_MEETING_NOTIFICATION' || event.data.userId !== userId) return;
+      if (event.data.callId) { setIncoming(current => current?.id === event.data.callId ? null : current); void closeCallNotification(event.data.callId); }
+      try { const url = new URL(event.data.url, window.location.origin); if (url.origin === window.location.origin && url.pathname === '/meet') router.push(`${url.pathname}${url.search}`); } catch { /* Invalid links are ignored. */ }
+    };
+    navigator.serviceWorker.addEventListener('message', message);
+    return () => navigator.serviceWorker.removeEventListener('message', message);
+  }, [router, token, userId]);
+
+  useEffect(() => {
     if (!incoming) return;
-    const timer = setTimeout(() => setIncoming(null), Math.max(0, incoming.expiresAt - Date.now()));
+    const timer = setTimeout(() => { setIncoming(null); void closeCallNotification(incoming.id); }, Math.max(0, incoming.expiresAt - Date.now()));
     return () => clearTimeout(timer);
   }, [incoming]);
 
@@ -102,6 +125,7 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
       const received = latestMeeting.current as Meeting | null;
       const current = received?.id === result.call.id ? received : result.call;
       engine.sync(current); setMeeting(current); setIncoming(null); setMinimized(false);
+      void closeCallNotification(current.id);
       for (const value of pendingSignals.current.splice(0)) if (value.callId === current.id) engine.signal(value.from, value.signal);
       return true;
     } catch (failure) {
@@ -134,10 +158,18 @@ function CallState({ children, token }: { children: React.ReactNode; token: stri
   const decline = useCallback(() => {
     if (incoming && socket.current) void callCommand(socket.current, 'call:decline', { conversationId: incoming.conversationId, callId: incoming.id }).catch(() => {});
     setIncoming(null);
+    if (incoming) void closeCallNotification(incoming.id);
   }, [incoming]);
+  const invite = useCallback(async (participantIds: string[]) => {
+    const engine = media.current;
+    if (!engine) throw new Error('Join a meeting first.');
+    await callCommand(engine.socket, 'call:invite', { conversationId: engine.meeting.conversationId, callId: engine.meeting.id, participantIds });
+    setNotice('Meeting invitations sent.');
+  }, []);
+  const dismissIncoming = () => { if (incoming) void closeCallNotification(incoming.id); setIncoming(null); };
 
   return <CallContext.Provider value={{ meeting, incoming, engine, connected, busy, error, notice, minimized, revision,
-    join, leave, update, decline, dismissIncoming: () => setIncoming(null), setMinimized, report: setError, clearNotice: () => { setNotice(''); setError(''); } }}>
+    ...ringtone, join, leave, update, invite, decline, dismissIncoming, setMinimized, report: setError, clearNotice: () => { setNotice(''); setError(''); } }}>
     {children}<CallOverlay />
   </CallContext.Provider>;
 }

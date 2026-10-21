@@ -1,7 +1,7 @@
 import type { Socket } from 'socket.io-client';
 
 export type CallParticipant = { socketId: string; userId: string; name: string; microphone: boolean; camera: boolean; sharing: boolean; handRaised: boolean };
-export type Meeting = { id: string; conversationId: string; meetingId?: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; participants: CallParticipant[] };
+export type Meeting = { id: string; conversationId: string; meetingId?: string; title: string; mode: 'audio' | 'video'; hostId: string; startedAt: string; participants: CallParticipant[]; invitedUserIds?: string[] };
 export type Invitation = Meeting & { callerName: string; expiresAt: number };
 export type RemoteMedia = { audio: MediaStream; camera: MediaStream; screen: MediaStream; status: RTCPeerConnectionState };
 type Signal = { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };

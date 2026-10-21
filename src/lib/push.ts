@@ -3,6 +3,13 @@ import { API_URL, apiFetch, apiPost } from './api';
 export function supportsPush() {
   return typeof window !== 'undefined' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
+export async function closeCallNotification(callId: string) {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    (registration?.active || registration?.waiting)?.postMessage({ type: 'CLOSE_CALL_NOTIFICATION', callId });
+  } catch { /* Notifications are optional; calling must continue without them. */ }
+}
 export async function bindPushAccount(userId: string, registration?: ServiceWorkerRegistration) {
   if (!supportsPush()) return;
   const worker = registration || await navigator.serviceWorker.getRegistration('/');

@@ -128,18 +128,20 @@ test('blocked incoming sound has an explicit working enable-audio control', asyn
 test('calendar scheduling, RSVP, calendar export, scheduled join and persistent history', async ({ browser, request }) => {
   const alice = await account(browser, request, 0), bob = await account(browser, request, 1, { width: 390, height: 844 });
   try {
-    await alice.page.goto('/meet');
+    await alice.page.goto('/meet?view=calendar');
     await alice.page.getByRole('button', { name: 'Schedule meeting', exact: true }).click();
     const form = alice.page.getByRole('dialog', { name: 'Schedule meeting', exact: true });
     await form.getByLabel('Title', { exact: true }).fill('Release planning');
-    await form.getByLabel('Invite conversation', { exact: true }).selectOption(alice.chats.find(chat => chat.kind === 'direct')._id);
+    await form.getByRole('button', { name: 'Add participant', exact: true }).click();
+    await form.getByRole('button', { name: 'Add Sam Rivera', exact: true }).click();
+    await form.getByRole('button', { name: 'Add Jordan Lee', exact: true }).click();
     const local = minutes => new Date(Date.now() + minutes * 60000).toLocaleString('sv-SE', { timeZone: 'Asia/Karachi' }).slice(0, 16).replace(' ', 'T');
     await form.getByLabel('Starts', { exact: true }).fill(local(10)); await form.getByLabel('Ends', { exact: true }).fill(local(40));
     await form.getByLabel('Call type').selectOption('audio');
     await form.getByRole('button', { name: 'Schedule meeting', exact: true }).click(); await expect(form).toBeHidden();
     await expect(alice.page.getByText('Release planning', { exact: true }).first()).toBeVisible();
     await alice.page.screenshot({ path: 'test-results/calls/calendar.png' });
-    await bob.page.goto('/meet');
+    await bob.page.goto('/meet?view=calendar');
     await bob.page.getByRole('button', { name: /Release planning/ }).first().click();
     let detail = bob.page.getByRole('dialog', { name: 'Release planning', exact: true });
     await detail.getByRole('button', { name: 'accepted', exact: true }).click();
@@ -151,9 +153,10 @@ test('calendar scheduling, RSVP, calendar export, scheduled join and persistent 
     await alice.page.getByRole('button', { name: /Release planning/ }).first().click();
     await alice.page.getByRole('button', { name: 'Edit meeting', exact: true }).click();
     await alice.page.getByLabel('Title', { exact: true }).fill('Final release planning');
+    await alice.page.getByRole('button', { name: 'Remove Jordan Lee', exact: true }).click();
     await alice.page.getByRole('button', { name: 'Save changes', exact: true }).click();
     for (const person of [alice, bob]) {
-      await person.page.goto('/meet'); await person.page.getByRole('button', { name: /Final release planning/ }).first().click();
+      await person.page.goto('/meet?view=calendar'); await person.page.getByRole('button', { name: /Final release planning/ }).first().click();
       await person.page.getByRole('link', { name: 'Join meeting', exact: true }).click(); await connected(person.page);
       await expect(person.page.getByRole('button', { name: 'Camera off', exact: true })).toBeVisible();
       await person.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
@@ -170,7 +173,7 @@ test('calendar scheduling, RSVP, calendar export, scheduled join and persistent 
     await bob.page.reload(); await expect(bob.page.getByText('Final release planning', { exact: true })).toBeVisible();
     await bob.page.getByRole('button', { name: 'History', exact: true }).click();
     await bob.page.getByLabel('Search meeting history', { exact: true }).fill('Final release');
-    await expect(bob.page.getByText('Team call', { exact: true })).toBeHidden();
+    await expect(bob.page.getByText('Team call', { exact: true })).toHaveCount(0);
     await bob.page.screenshot({ path: 'test-results/calls/history-mobile.png' });
     expect(await bob.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(alice.errors).toEqual([]); expect(bob.errors).toEqual([]);
@@ -229,8 +232,17 @@ test('real two-browser voice/video, presentation, controls, navigation and host 
       return Math.abs(r - 84) < 12 && Math.abs(g - 112) < 12 && Math.abs(b - 244) < 12;
     }), { timeout: 30000 }).toBe(true);
     await expect.poll(() => bob.page.locator('video[aria-label="Alex Morgan"]').evaluate(video => video.videoWidth)).toBeGreaterThan(0);
+    await bob.page.getByRole('button', { name: 'Focus presentation by Alex Morgan', exact: true }).click();
+    await expect(bob.page.getByTestId('participant-gallery')).toBeHidden();
+    await expect(bob.page.getByRole('button', { name: 'Back to gallery', exact: true })).toBeVisible();
+    expect(await bob.page.locator('video[aria-label="Alex Morgan is presenting"]').evaluate(video => { const box = video.getBoundingClientRect(); return box.height > innerHeight * 0.6 && box.width > innerWidth * 0.7; })).toBe(true);
+    await bob.page.screenshot({ path: 'test-results/calls/focused-screen.png' });
+    await bob.page.getByRole('button', { name: 'Back to gallery', exact: true }).click();
+    await expect(bob.page.getByTestId('participant-gallery')).toBeVisible();
+    await bob.page.getByRole('button', { name: 'Focus presentation by Alex Morgan', exact: true }).click();
     await alice.page.evaluate(() => { clearInterval(window.__testPaint); window.__testDisplay.getVideoTracks()[0].dispatchEvent(new Event('ended')); });
     await expect(bob.page.getByText('Alex Morgan is presenting', { exact: true })).toBeHidden();
+    await expect(bob.page.getByTestId('participant-gallery')).toBeVisible();
     await bob.page.getByRole('button', { name: 'Minimize meeting', exact: true }).click();
     await bob.page.getByRole('link', { name: 'Chat', exact: true }).click();
     await expect(bob.page.getByRole('button', { name: /Return to call/ })).toBeVisible();
@@ -269,6 +281,98 @@ test('mobile lobby supports voice-only calls and permission errors', async ({ br
     expect(await alice.page.evaluate(() => window.__localStream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
     expect(alice.errors).toEqual([]);
   } finally { await alice.close(); }
+});
+
+test('all-user selection starts a multi-invite voice meeting and adds people during the call', async ({ browser, request }) => {
+  const alice = await account(browser, request, 0), bob = await account(browser, request, 1), maya = await account(browser, request, 3, { width: 390, height: 844 });
+  try {
+    expect(maya.chats).toEqual([]);
+    await Promise.all([alice.page.goto('/meet'), bob.page.goto('/chat'), maya.page.goto('/meet')]);
+    await connected(alice.page);
+    await alice.page.getByLabel('Meeting title', { exact: true }).fill('Cross-team voice meeting');
+    await alice.page.getByRole('button', { name: 'Add participant', exact: true }).click();
+    await alice.page.getByLabel('Search all users', { exact: true }).fill('Maya');
+    await alice.page.getByRole('button', { name: 'Add Maya Patel', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Add Jordan Lee', exact: true }).click();
+    await expect(alice.page.getByText('2 selected', { exact: true })).toBeVisible();
+    await alice.page.getByRole('button', { name: 'Voice call', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Add participant', exact: true }).click();
+    await alice.page.locator('h1').scrollIntoViewIfNeeded();
+    await alice.page.screenshot({ path: 'test-results/calls/meet-home.png' });
+    await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
+    await expect(maya.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeVisible();
+    await maya.page.getByRole('link', { name: 'Answer', exact: true }).click(); await connected(maya.page);
+    await maya.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
+    await expect(maya.page.getByRole('button', { name: 'Turn camera on', exact: true })).toBeVisible();
+    await alice.page.getByRole('button', { name: 'Show participants', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Add participant', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Add Sam Rivera', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Send invitations', exact: true }).click();
+    await expect(bob.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeVisible();
+    await bob.page.getByRole('link', { name: 'Answer', exact: true }).click(); await connected(bob.page);
+    await bob.page.getByRole('button', { name: 'Join meeting', exact: true }).click();
+    for (const person of [alice, bob, maya]) await expect(person.page.getByText('3 / 8 participants', { exact: false })).toBeVisible();
+    await monitorSound(maya.page, 'Alex Morgan'); await expect.poll(() => soundLevel(maya.page)).toBeGreaterThan(0.01);
+    expect(await maya.page.locator('video[aria-label="Maya Patel (you)"]').evaluate(video => video.srcObject.getVideoTracks().length)).toBe(0);
+    expect(await maya.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await maya.page.screenshot({ path: 'test-results/calls/voice-mobile.png' });
+    await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
+    await maya.page.goto('/meet?view=history');
+    await expect(maya.page.getByText('Cross-team voice meeting', { exact: true })).toBeVisible();
+    await expect(maya.page.getByText('attended', { exact: true })).toBeVisible();
+    for (const person of [alice, bob, maya]) expect(person.errors).toEqual([]);
+  } catch (error) { for (const person of [alice, bob, maya]) await diagnose(person); throw error; }
+  finally { await alice.close(); await bob.close(); await maya.close(); }
+});
+
+test('incoming ringtone respects mute, stops on decline and answer, and recovers after a fresh launch', async ({ browser, request }) => {
+  const alice = await account(browser, request, 0), bob = await account(browser, request, 1);
+  try {
+    await bob.context.addInitScript(() => {
+      window.__ringStarts = 0; window.__ringActive = 0; window.__micRequests = 0;
+      const start = OscillatorNode.prototype.start;
+      OscillatorNode.prototype.start = function (...args) {
+        window.__ringStarts++; window.__ringActive++;
+        this.addEventListener('ended', () => window.__ringActive--, { once: true });
+        return start.apply(this, args);
+      };
+      const capture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = (...args) => { window.__micRequests++; return capture(...args); };
+    });
+    const direct = alice.chats.find(chat => chat.kind === 'direct');
+    await Promise.all([alice.page.goto(`/meet?conversation=${direct._id}&mode=audio`), bob.page.goto('/meet')]);
+    await connected(alice.page); await connected(bob.page);
+    await bob.page.getByRole('button', { name: 'Ringing on', exact: true }).click();
+    await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
+    await expect(bob.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeVisible();
+    expect(await bob.page.evaluate(() => window.__ringStarts)).toBe(0);
+    await bob.page.getByRole('button', { name: 'Ringing off', exact: true }).click();
+    await expect.poll(() => bob.page.evaluate(() => window.__ringStarts)).toBeGreaterThan(0);
+    expect(await bob.page.evaluate(() => window.__micRequests)).toBe(0);
+    await bob.page.getByRole('button', { name: 'Decline', exact: true }).click();
+    await expect.poll(() => bob.page.evaluate(() => window.__ringActive)).toBe(0);
+    const stopped = await bob.page.evaluate(() => window.__ringStarts);
+    await bob.page.waitForTimeout(3200);
+    expect(await bob.page.evaluate(() => window.__ringStarts)).toBe(stopped);
+    await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
+    await bob.page.reload(); await connected(bob.page);
+    await alice.page.getByRole('button', { name: 'Start or join voice call', exact: true }).click();
+    await expect(bob.page.getByRole('button', { name: 'Enable ringtone', exact: true })).toBeVisible();
+    await bob.page.getByRole('button', { name: 'Enable ringtone', exact: true }).click();
+    await expect.poll(() => bob.page.evaluate(() => window.__ringStarts)).toBeGreaterThan(0);
+    const answerLink = await bob.page.getByRole('link', { name: 'Answer', exact: true }).getAttribute('href');
+    const bobId = bob.chats.find(chat => chat.kind === 'direct').members.find(member => member.user.name === 'Sam Rivera').user._id;
+    // The PWA's native Answer action sends this message to the existing app.
+    await bob.page.evaluate(({ answerLink, bobId }) => {
+      const url = new URL(answerLink, location.origin);
+      navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { type: 'OPEN_MEETING_NOTIFICATION', userId: bobId, callId: url.searchParams.get('call'), url: url.href } }));
+    }, { answerLink, bobId });
+    await expect.poll(() => bob.page.evaluate(() => window.__ringActive)).toBe(0);
+    await expect(bob.page.getByRole('dialog', { name: 'Incoming voice call' })).toBeHidden();
+    await expect(bob.page.getByRole('button', { name: 'Join meeting', exact: true })).toBeVisible();
+    await alice.page.getByRole('button', { name: 'End for all', exact: true }).click();
+    expect(alice.errors).toEqual([]); expect(bob.errors).toEqual([]);
+  } finally { await alice.close(); await bob.close(); }
 });
 
 test('three-person group media connects every peer and host handoff survives a closed tab', async ({ browser, request }) => {

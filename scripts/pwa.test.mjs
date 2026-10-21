@@ -39,7 +39,7 @@ test('Android notification badge is a white logo mask with transparent padding a
   assert.ok(transparent > 5000, 'the backdrop and spaces between logo strokes must stay transparent');
 });
 
-function worker({ online = false, failInstall = false, failWrite = false, stores = new Map() } = {}) {
+function worker({ online = false, failInstall = false, failWrite = false, stores = new Map(), windows = [] } = {}) {
   const handlers = {};
   const notifications = [], fetched = [], opened = [];
   let claimed = false;
@@ -63,8 +63,8 @@ function worker({ online = false, failInstall = false, failWrite = false, stores
     URL, Response,
     self: {
       location: { origin }, addEventListener: (name, fn) => { handlers[name] = fn; }, skipWaiting: async () => {},
-      registration: { showNotification: async (title, options) => notifications.push({ title, ...options }), getNotifications: async () => notifications.map((item) => ({ close: () => { item.closed = true; } })) },
-      clients: { claim: async () => { claimed = true; }, matchAll: async () => [], openWindow: async (url) => { opened.push(url); } },
+      registration: { showNotification: async (title, options) => notifications.push({ title, ...options }), getNotifications: async () => notifications.map((item) => ({ ...item, close: () => { item.closed = true; } })) },
+      clients: { claim: async () => { claimed = true; }, matchAll: async () => windows, openWindow: async (url) => { opened.push(url); } },
     },
     caches: { open: async (name) => cacheFor(name), keys: async () => [...stores.keys()], delete: async (name) => stores.delete(name) },
     fetch: async (url, options) => {
@@ -212,4 +212,53 @@ test('malformed push payloads show a safe generic notification without crashing'
   await sw.dispatch('push', { data: { json: () => { throw new Error('Bad JSON'); } } });
   assert.equal(sw.notifications[0].title, 'Neximet Portal');
   assert.equal(sw.fetched.length, 0);
+});
+
+const callPayload = { userId, kind: 'incoming_call', callId: 'call-test', expiresAt: Date.now() + 45000, title: 'Incoming voice call', body: 'Sam is calling', url: `/meet?conversation=${conversationId}&call=call-test&mode=audio` };
+test('incoming PWA calls request sound, vibration and actions and open the correct meeting', async () => {
+  const sw = worker(); await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('push', { data: { json: () => callPayload } });
+  const notification = sw.notifications[0];
+  assert.equal(notification.title, 'Incoming voice call'); assert.equal(notification.tag, 'call-call-test');
+  assert.equal(notification.silent, false); assert.equal(notification.requireInteraction, true);
+  assert.ok(notification.vibrate.length > 0); assert.equal(notification.actions[0].action, 'answer');
+  await sw.dispatch('notificationclick', { action: 'answer', notification: { close() {}, data: notification.data } });
+  assert.equal(sw.opened[0], `${origin}${callPayload.url}`); assert.equal(sw.fetched.length, 0);
+  await sw.dispatch('message', { data: { type: 'CLOSE_CALL_NOTIFICATION', callId: 'call-test' } });
+  assert.equal(notification.closed, true);
+});
+
+test('meeting reminders stay account-bound and stale calls cannot ring', async () => {
+  const sw = worker(); await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('push', { data: { json: () => ({ ...callPayload, expiresAt: 0 }) } });
+  assert.equal(sw.notifications[0].title, 'Missed call'); assert.equal(sw.notifications[0].silent, true);
+  assert.equal(sw.notifications[0].requireInteraction, false); assert.equal(sw.notifications[0].vibrate, undefined);
+  const reminder = { userId, kind: 'meeting_starting', meetingId: 'meeting-test', title: 'Meeting starts now', body: 'Release review', expiresAt: Date.now() + 60000, url: `/meet?conversation=${conversationId}&meeting=meeting-test&mode=audio` };
+  await sw.dispatch('push', { data: { json: () => reminder } });
+  assert.equal(sw.notifications[1].tag, 'meeting-meeting-test'); assert.equal(sw.notifications[1].data.url, `${origin}${reminder.url}`);
+  await sw.dispatch('message', { data: { type: 'CLEAR_PUSH_ACCOUNT' } });
+  await sw.dispatch('push', { data: { json: () => reminder } });
+  assert.equal(sw.notifications[2].title, 'Neximet Portal'); assert.equal(sw.notifications[2].body.includes('Release review'), false);
+});
+
+test('notification actions preserve an active app and dismiss ringing without navigation', async () => {
+  const messages = []; let focused = false;
+  const sw = worker({ windows: [{ url: `${origin}/chat`, postMessage: data => messages.push(data), focus: async () => { focused = true; }, navigate: () => { throw Error('Active call was reloaded'); } }] });
+  await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  const data = { ...callPayload, url: `${origin}${callPayload.url}` };
+  await sw.dispatch('notificationclick', { action: 'dismiss', notification: { close() {}, data } });
+  assert.equal(messages[0].type, 'DISMISS_CALL_NOTIFICATION'); assert.equal(focused, false); assert.equal(sw.opened.length, 0);
+  await sw.dispatch('notificationclick', { action: 'answer', notification: { close() {}, data } });
+  assert.equal(messages[1].type, 'OPEN_MEETING_NOTIFICATION'); assert.equal(messages[1].userId, userId); assert.equal(focused, true);
+});
+
+test('late incoming pushes cannot ring after the same call has ended or been answered', async () => {
+  const sw = worker(); await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('push', { data: { json: () => ({ ...callPayload, kind: 'call_ended', title: 'Missed voice call' }) } });
+  assert.equal(sw.notifications[0].silent, true);
+  // A restarted worker still remembers a terminal call, without keeping any token.
+  const restarted = worker({ stores: sw.stores });
+  await restarted.dispatch('push', { data: { json: () => callPayload } });
+  assert.equal(restarted.notifications[0].title, 'Call ended');
+  assert.equal(restarted.notifications[0].silent, true); assert.equal(restarted.notifications[0].requireInteraction, false);
 });

@@ -22,9 +22,18 @@ self.addEventListener('install', (event) => {
 // message history. Persist it so account checks also work after worker restarts.
 const PUSH_SETTINGS = 'neximet-push-settings';
 const PUSH_ACCOUNT = '/__push_account';
+const CLOSED_CALLS = '/__closed_calls';
 async function pushAccount() {
   try { return await (await (await caches.open(PUSH_SETTINGS)).match(PUSH_ACCOUNT))?.json(); }
   catch { return null; }
+}
+async function closedCalls() {
+  try { return await (await (await caches.open(PUSH_SETTINGS)).match(CLOSED_CALLS))?.json() || []; } catch { return []; }
+}
+async function rememberClosedCall(callId, userId) {
+  const entries = (await closedCalls()).filter(item => item.until > Date.now() && !(item.callId === callId && item.userId === userId));
+  entries.push({ callId, userId, until: Date.now() + 300000 });
+  await (await caches.open(PUSH_SETTINGS)).put(CLOSED_CALLS, new Response(JSON.stringify(entries.slice(-30))));
 }
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'ACTIVATE_UPDATE') { event.waitUntil(self.skipWaiting()); return; }
@@ -41,30 +50,49 @@ self.addEventListener('message', (event) => {
     const notifications = await self.registration.getNotifications();
     notifications.forEach((notification) => notification.close());
   })());
+  if (event.data?.type === 'CLOSE_CALL_NOTIFICATION' && typeof event.data.callId === 'string') event.waitUntil((async () => {
+    const account = await pushAccount();
+    if (account) await rememberClosedCall(event.data.callId, account.userId);
+    const notifications = await self.registration.getNotifications({ tag: `call-${event.data.callId}` });
+    notifications.filter(notification => notification.tag === `call-${event.data.callId}`).forEach(notification => notification.close());
+  })());
 });
-function chatUrl(value) {
+function appUrl(value, fallback = '/chat') {
   try {
     const url = new URL(value, self.location.origin);
-    return url.origin === self.location.origin && url.pathname === '/chat' ? url.href : `${self.location.origin}/chat`;
-  } catch { return `${self.location.origin}/chat`; }
+    return url.origin === self.location.origin && ['/chat', '/meet'].includes(url.pathname) ? url.href : `${self.location.origin}${fallback}`;
+  } catch { return `${self.location.origin}${fallback}`; }
 }
 self.addEventListener('push', (event) => event.waitUntil((async () => {
   let payload;
   try { payload = event.data?.json(); } catch { /* Show a safe generic notification. */ }
   const account = await pushAccount();
   const belongsToAccount = account && payload?.userId === account.userId;
-  await self.registration.showNotification(belongsToAccount ? String(payload.title || 'Neximet Chat').slice(0, 120) : 'Neximet Portal', {
-    body: belongsToAccount ? String(payload.body || 'You have a new message').slice(0, 200) : 'Open the app to check your messages.',
+  const meeting = belongsToAccount && ['incoming_call', 'call_ended', 'meeting_invitation', 'meeting_updated', 'meeting_cancelled', 'meeting_reminder', 'meeting_starting'].includes(payload.kind);
+  const call = meeting && ['incoming_call', 'call_ended'].includes(payload.kind);
+  const terminal = call && (payload.kind === 'call_ended' || (await closedCalls()).some(item => item.callId === payload.callId && item.userId === account.userId && item.until > Date.now()));
+  if (call && payload.kind === 'call_ended') await rememberClosedCall(payload.callId, account.userId);
+  const expired = meeting && (!Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now());
+  const ringing = call && payload.kind === 'incoming_call' && !expired && !terminal;
+  const fallback = meeting ? '/meet' : '/chat';
+  const title = belongsToAccount ? terminal && payload.kind === 'incoming_call' ? 'Call ended' : expired ? call ? 'Missed call' : 'Meeting update' : String(payload.title || 'Neximet Chat').slice(0, 120) : 'Neximet Portal';
+  const options = {
+    body: belongsToAccount ? expired || terminal && payload.kind === 'incoming_call' ? 'Open Meetings to check the latest details.' : String(payload.body || 'You have a new message').slice(0, 200) : 'Open the app to check your messages.',
     icon: '/icons/icon-192x192.png',
     // The small Android status-bar icon must be an alpha-only logo silhouette.
     // An opaque app-icon background turns into a solid square when masked.
     badge: '/icons/notification-badge-96x96.png',
-    tag: belongsToAccount ? `chat-${payload.conversationId}` : 'neximet-chat',
-    data: { url: belongsToAccount ? chatUrl(payload.url) : `${self.location.origin}/chat`, userId: belongsToAccount ? account.userId : null },
-  });
+    tag: call ? `call-${payload.callId}` : meeting ? `meeting-${payload.meetingId}` : belongsToAccount ? `chat-${payload.conversationId}` : 'neximet-chat',
+    data: { url: belongsToAccount ? appUrl(expired || terminal ? '/meet?view=history' : payload.kind === 'meeting_cancelled' ? '/meet?view=calendar' : payload.url, fallback) : `${self.location.origin}/chat`, userId: belongsToAccount ? account.userId : null,
+      kind: meeting ? payload.kind : 'chat', callId: call ? payload.callId : undefined, expiresAt: call ? payload.expiresAt : undefined },
+  };
+  if (meeting) Object.assign(options, { renotify: !expired && !terminal, requireInteraction: ringing, silent: expired || terminal,
+    actions: ringing ? [{ action: 'answer', title: 'Answer' }, { action: 'dismiss', title: 'Dismiss' }] : [{ action: 'open', title: call ? 'View history' : 'Open meeting' }] });
+  if (meeting && !options.silent) options.vibrate = ringing ? [300, 150, 300, 150, 600] : [200, 100, 200];
+  await self.registration.showNotification(title, options);
   // A push-service acceptance is not delivery. Acknowledge only when the device
   // received and displayed it, using a token restricted to this one receipt.
-  if (belongsToAccount && typeof payload.receiptToken === 'string') {
+  if (belongsToAccount && !meeting && typeof payload.receiptToken === 'string') {
     try { await fetch(`${account.apiUrl}/chat/push/delivered`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ receiptToken: payload.receiptToken }) }); }
     catch { /* The authenticated app catches up delivery receipts on reconnect. */ }
   }
@@ -74,10 +102,19 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const account = await pushAccount();
     const data = event.notification.data;
-    const url = chatUrl(account && account.userId === data?.userId ? data.url : '/chat');
+    const matches = account && account.userId === data?.userId;
+    const isMeeting = matches && data.kind !== 'chat' && typeof data.kind === 'string';
+    if (matches && data.callId) await rememberClosedCall(data.callId, account.userId);
+    const url = appUrl(matches ? data.kind === 'incoming_call' && data.expiresAt <= Date.now() ? '/meet?view=history' : data.url : '/chat', isMeeting ? '/meet' : '/chat');
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (event.action === 'dismiss') {
+      if (matches && data.callId) windows.forEach(client => client.postMessage({ type: 'DISMISS_CALL_NOTIFICATION', callId: data.callId }));
+      return;
+    }
     const client = windows.find((window) => new URL(window.url).origin === self.location.origin);
-    if (client) { await client.navigate(url); await client.focus(); }
+    // Keep active call media alive by using client-side navigation in an open app.
+    if (client && isMeeting && client.postMessage) { client.postMessage({ type: 'OPEN_MEETING_NOTIFICATION', userId: account.userId, callId: data.callId, url }); await client.focus(); }
+    else if (client) { await client.navigate(url); await client.focus(); }
     else await self.clients.openWindow(url);
   })());
 });
