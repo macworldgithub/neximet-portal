@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, CheckCheck, Download, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw, Phone, Video } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, Loader2, MessageSquare, Paperclip, Plus, Search, Send, Users, X, ChevronDown, RefreshCw, Phone, Video } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { API_URL, apiFetch, getToken } from '../../lib/api';
 import { chatTitle, initials, mergeMessages, messageStatus, type ChatConversation, type ChatMessage } from '../../lib/chat';
 import NewChatModal from '../../components/chat/NewChatModal';
+import ChatAttachment from '../../components/chat/ChatAttachment';
 
 type PendingMessage = { clientId: string; chatId: string; text: string; file?: File; state: 'sending' | 'failed'; error?: string };
 const time = (date: string) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -272,10 +273,13 @@ export default function ChatPage() {
 
   const download = async (message: ChatMessage) => {
     setActionError('');
+    const token = getToken();
     try {
-      const response = await fetch(`${API_URL}/chat/conversations/${message.conversation}/messages/${message._id}/attachment`, { headers: { Authorization: `Bearer ${getToken()}` }, cache: 'no-store' });
+      const response = await fetch(`${API_URL}/chat/conversations/${message.conversation}/messages/${message._id}/attachment`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       if (!response.ok) throw new Error('Unable to download this file. Please retry.');
-      const url = URL.createObjectURL(await response.blob());
+      const blob = await response.blob();
+      if (token !== getToken()) return;
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = message.attachment?.name || 'attachment'; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (failure) { setActionError(failure instanceof Error ? failure.message : 'Download failed'); }
@@ -283,8 +287,9 @@ export default function ChatPage() {
 
   const addFile = (file?: File) => {
     if (!activeId || !file) return;
-    if (file.size > 3 * 1024 * 1024) { setActionError('Files must be 3 MB or smaller'); return; }
-    if (!/\.(png|jpe?g|webp|gif|pdf|txt|csv|docx|xlsx|pptx|zip)$/i.test(file.name)) { setActionError('Use an image, PDF, text, Office document, or ZIP file'); return; }
+    const isVideo = /\.(mp4|m4v|mov|webm)$/i.test(file.name);
+    if (file.size > (isVideo ? 12 : 3) * 1024 * 1024) { setActionError(isVideo ? 'Videos must be 12 MB or smaller' : 'Images and files must be 3 MB or smaller'); return; }
+    if (!/\.(png|jpe?g|webp|gif|mp4|m4v|mov|webm|pdf|txt|csv|docx|xlsx|pptx|zip)$/i.test(file.name)) { setActionError('Use an image, MP4/MOV/WebM video, PDF, text, Office document, or ZIP file'); return; }
     setActionError(''); setDrafts((current) => ({ ...current, [activeId]: { text: current[activeId]?.text || '', file } }));
   };
   if (!user) return null;
@@ -322,7 +327,7 @@ export default function ChatPage() {
             <div className={`flex ${own ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[90%] rounded-2xl px-3 py-2 sm:max-w-[min(80%,48rem)] ${own ? 'rounded-br-sm bg-[#5470F4]/85 text-white' : 'rounded-bl-sm border border-[#1F293D] bg-[#161F30]'}`}>
               {!own && active.kind === 'group' && <p className="mb-1 text-xs font-semibold text-[#5CC5FA]">{message.sender?.name || 'Former teammate'}</p>}
               {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">{message.text}</p>}
-              {message.attachment?.name && <button onClick={() => void download(message)} className="mt-2 flex max-w-full items-center gap-3 rounded-xl border border-white/15 bg-black/15 p-3 text-left hover:bg-black/25"><Download className="shrink-0" size={18} /><span className="min-w-0"><span className="block truncate text-xs font-medium">{message.attachment.name}</span><span className="text-[10px] opacity-60">{(message.attachment.size / 1024).toFixed(0)} KB · Download</span></span></button>}
+              {message.attachment?.name && <ChatAttachment message={message} onDownload={() => void download(message)} />}
               <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px]"><time className="opacity-70" dateTime={message.createdAt}>{time(message.createdAt)}</time>{own && <span title={statusLabel} aria-label={statusLabel}>{status === 'sent' ? <Check size={14} className="text-gray-300" /> : <CheckCheck size={14} className={status === 'seen' ? 'text-[#38bdf8]' : 'text-gray-300'} />}</span>}</div>
             </div></div>
           </div>; })}
@@ -336,7 +341,7 @@ export default function ChatPage() {
           {actionError && <p role="alert" className="mb-2 flex items-center justify-between gap-2 text-xs text-rose-300">{actionError}<button type="button" aria-label="Dismiss error" onClick={() => setActionError('')}><X size={14} /></button></p>}
           {draft.file && <div className="mb-2 flex items-center gap-2 rounded-lg bg-[#161F30] px-3 py-2 text-xs"><Paperclip size={14} /><span className="min-w-0 flex-1 truncate">{draft.file.name}</span><button type="button" aria-label="Remove attachment" onClick={() => activeId && setDrafts((current) => ({ ...current, [activeId]: { text: current[activeId]?.text || '' } }))}><X size={16} /></button></div>}
           </div>
-          <div className="flex items-end gap-2"><input ref={fileInput} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip" className="hidden" onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /><button type="button" aria-label="Attach a file (up to 3 MB)" onClick={() => fileInput.current?.click()} className="mb-1 rounded-xl p-2.5 text-gray-400 hover:bg-[#1F293D] hover:text-white"><Paperclip size={20} /></button><textarea ref={composer} aria-label="Message" placeholder={`Message ${title}…`} rows={1} maxLength={4000} value={draft.text} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.matchMedia('(min-width: 768px)').matches) { event.preventDefault(); send(); } }} className={`${field} max-h-30 min-h-11 resize-none px-3 py-2.5`} /><button type="submit" onPointerDown={(event) => { if (document.activeElement === composer.current) event.preventDefault(); }} disabled={loading || !online || (!draft.text.trim() && !draft.file)} aria-label="Send message" className="gradient-btn mb-1 rounded-xl p-3 disabled:opacity-40"><Send size={19} /></button></div><p className="mt-1 hidden text-[10px] text-gray-500 md:block"><span>Enter to send · Shift+Enter for a new line · </span>Files up to 3 MB{draft.text.length > 3500 && <span className="float-right">{draft.text.length}/4000</span>}</p>
+          <div className="flex items-end gap-2"><input ref={fileInput} type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.m4v,.mov,.webm,.pdf,.txt,.csv,.docx,.xlsx,.pptx,.zip" className="hidden" onChange={(event) => { addFile(event.target.files?.[0]); event.target.value = ''; }} /><button type="button" aria-label="Attach a file (videos up to 12 MB, other files up to 3 MB)" onClick={() => fileInput.current?.click()} className="mb-1 rounded-xl p-2.5 text-gray-400 hover:bg-[#1F293D] hover:text-white"><Paperclip size={20} /></button><textarea ref={composer} aria-label="Message" placeholder={`Message ${title}…`} rows={1} maxLength={4000} value={draft.text} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && window.matchMedia('(min-width: 768px)').matches) { event.preventDefault(); send(); } }} className={`${field} max-h-30 min-h-11 resize-none px-3 py-2.5`} /><button type="submit" onPointerDown={(event) => { if (document.activeElement === composer.current) event.preventDefault(); }} disabled={loading || !online || (!draft.text.trim() && !draft.file)} aria-label="Send message" className="gradient-btn mb-1 rounded-xl p-3 disabled:opacity-40"><Send size={19} /></button></div><p className="mt-1 hidden text-[10px] text-gray-500 md:block"><span>Enter to send · Shift+Enter for a new line · </span>Images/files up to 3 MB | Videos up to 12 MB{draft.text.length > 3500 && <span className="float-right">{draft.text.length}/4000</span>}</p>
         </form>
       </section> : <div className="hidden flex-1 flex-col items-center justify-center px-8 text-center md:flex"><div className="mb-5 rounded-3xl border border-[#5470F4]/20 bg-[#5470F4]/10 p-6"><MessageSquare className="text-[#5CC5FA]" size={44} /></div><h2 className="text-xl font-semibold">Your team, one conversation away</h2><p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-400">Share updates, ask questions, and keep everyone connected. Choose a conversation or start a new one.</p><button onClick={() => setNewChat(true)} className="gradient-btn mt-6 rounded-xl px-5 py-3 text-sm font-semibold">Start a conversation</button></div>}
     </div>
