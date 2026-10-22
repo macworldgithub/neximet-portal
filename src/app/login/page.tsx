@@ -43,7 +43,11 @@ export default function LoginPage() {
       const meeting = new URLSearchParams(window.location.search).get('meet');
       const meetingParams = new URLSearchParams(meeting || '');
       const meetingChat = meetingParams.get('conversation');
-      router.push(meetingChat && /^[a-f\d]{24}$/i.test(meetingChat) ? `/meet?${meetingParams.toString()}` : chat && /^[a-f\d]{24}$/i.test(chat) ? `/chat?conversation=${chat}` : '/dashboard');
+      const next = new URLSearchParams(window.location.search).get('next');
+      let nextUrl: URL | null = null;
+      try { if (next) nextUrl = new URL(next, window.location.origin); } catch { /* Invalid return paths use the dashboard. */ }
+      const announcementRoute = nextUrl?.origin === window.location.origin && ['/announcements', '/notifications'].includes(nextUrl.pathname) ? nextUrl.pathname + nextUrl.search : null;
+      router.push(announcementRoute || (meetingChat && /^[a-f\d]{24}$/i.test(meetingChat) ? `/meet?${meetingParams.toString()}` : chat && /^[a-f\d]{24}$/i.test(chat) ? `/chat?conversation=${chat}` : '/dashboard'));
     } else {
       setError(res.message || 'Invalid credentials. Please verify your email and password.');
     }

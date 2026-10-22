@@ -27,10 +27,13 @@ import {
   Video,
   Mail,
   Sparkles,
+  Megaphone,
+  Bell,
 } from 'lucide-react';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import { usePwa } from '../pwa/PwaProvider';
 import { isMotoZ3, openMotoZ3Drawer } from '../../lib/motoZ3';
+import { useNotifications } from '../../context/NotificationContext';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -42,6 +45,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
   const pathname = usePathname();
   const { unreadCount } = useChat();
   const { unread: unreadMail } = useMail();
+  const { unread: unreadNotifications } = useNotifications();
   const { user, isSuperAdmin } = useAuth();
   const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [projectsCount, setProjectsCount] = useState<number | null>(null);
@@ -98,6 +102,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
   const isExecutive = isSuperAdmin || user?.role === 'CEO';
 
   const navItems = [
+    { label: 'Announcements', href: '/announcements', icon: Megaphone, badge: null },
+    { label: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications ? `${unreadNotifications} unread` : null },
     { label: 'Meetings', href: '/meet', icon: Video, badge: null },
     { label: 'Team Chat', href: '/chat', icon: MessageSquare, badge: unreadCount ? `${unreadCount} unread` : null },
     { label: 'Mail', href: '/mail', icon: Mail, badge: unreadMail ? `${unreadMail} unread` : null },

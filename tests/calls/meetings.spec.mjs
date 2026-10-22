@@ -2,6 +2,40 @@ import { test, expect } from '@playwright/test';
 import { callBrowserOptions } from '../../scripts/call-test-media.mjs';
 import { readFile } from 'node:fs/promises';
 
+test('leadership publishes targeted announcements and recipients receive private inbox updates', async ({ browser, request }) => {
+  const ceo = await account(browser, request, 4), bob = await account(browser, request, 1, { width: 390, height: 844 }), outsider = await account(browser, request, 2);
+  try {
+    await ceo.page.goto('/announcements');
+    await ceo.page.getByRole('button', { name: 'New announcement', exact: true }).click();
+    const form = ceo.page.getByRole('form', { name: 'Publish announcement' });
+    const title = `Release announcement ${Date.now()}`;
+    await form.getByLabel('Title', { exact: true }).fill(title);
+    await form.getByLabel('Announcement', { exact: true }).fill('Please review the release plan.\n<script>This remains plain text.</script>');
+    await form.getByRole('combobox', { name: 'Audience', exact: true }).selectOption('users');
+    await form.getByRole('combobox', { name: 'Priority', exact: true }).selectOption('important');
+    await form.getByRole('button', { name: 'Add recipient', exact: true }).click();
+    await form.getByRole('button', { name: 'Add Sam Rivera', exact: true }).click();
+    await form.getByRole('button', { name: 'Publish announcement', exact: true }).click();
+    await expect(ceo.page.getByText('Announcement published for 1 person.', { exact: true })).toBeVisible();
+    await bob.page.goto('/notifications');
+    const notification = bob.page.getByRole('button').filter({ hasText: title });
+    await expect(notification).toBeVisible(); await notification.click();
+    await expect(bob.page.getByRole('heading', { name: title, exact: true }).first()).toBeVisible();
+    await expect(bob.page.getByRole('button', { name: 'New announcement', exact: true })).toHaveCount(0);
+    await expect(bob.page.getByText('<script>This remains plain text.</script>', { exact: false }).first()).toBeVisible();
+    await bob.page.screenshot({ path: 'test-results/calls/announcements-mobile.png', fullPage: true });
+    await outsider.page.goto('/announcements');
+    await expect(outsider.page.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
+    const unauthorized = await request.post(`${api}/announcements`, { headers: { Authorization: `Bearer ${bob.token}` }, data: { title: 'Forged', body: 'No access' } });
+    expect(unauthorized.status()).toBe(403);
+    await ceo.page.getByRole('button', { name: `Archive ${title}`, exact: true }).click();
+    await expect(ceo.page.getByText('Announcement archived.', { exact: true })).toBeVisible();
+    await bob.page.goto('/notifications');
+    await expect(bob.page.getByRole('button').filter({ hasText: title })).toHaveCount(0);
+    expect(ceo.errors).toEqual([]); expect(bob.errors).toEqual([]); expect(outsider.errors).toEqual([]);
+  } finally { await ceo.close(); await bob.close(); await outsider.close(); }
+});
+
 const api = 'http://127.0.0.1:4012/api';
 async function account(browser, request, index, viewport, userAgent) {
   const result = await (await request.post(`${api}/auth/login`, { data: { email: `chat-qa-${index}@example.test`, password: 'chat-qa-only' } })).json();
@@ -384,6 +418,9 @@ test('phone-like calling requires an invitee, rings before answer, and answers w
   try {
     await Promise.all([alice.page.goto('/meet'), bob.page.goto('/meet')]);
     await connected(alice.page); await connected(bob.page);
+    await bob.page.setViewportSize({ width: 412, height: 844 });
+    expect(await bob.page.locator('nav[aria-label="Communication"]').evaluate(nav => nav.getBoundingClientRect().right <= innerWidth)).toBe(true);
+    await bob.page.setViewportSize({ width: 390, height: 844 });
     const start = alice.page.getByRole('button', { name: 'Start or join video call', exact: true });
     await expect(start).toBeDisabled();
     await expect(alice.page.getByText('Add at least one participant to start a call.', { exact: true })).toBeVisible();
@@ -396,6 +433,11 @@ test('phone-like calling requires an invitee, rings before answer, and answers w
     await expect(alice.page.getByText('Calling Sam Rivera', { exact: true })).toBeVisible();
     await expect(alice.page.getByTestId('participant-gallery')).toBeHidden();
     await alice.page.screenshot({ path: 'test-results/calls/outgoing-call.png' });
+    const incoming = bob.page.getByRole('dialog', { name: 'Incoming voice call' });
+    await expect(incoming).toBeVisible();
+    expect(await incoming.getAttribute('aria-modal')).toBe('true');
+    const bounds = await incoming.boundingBox(); expect(bounds.width).toBe(390); expect(bounds.height).toBe(844);
+    await bob.page.screenshot({ path: 'test-results/calls/incoming-call-mobile.png' });
     await bob.page.getByRole('button', { name: 'Answer', exact: true }).click();
     await expect(bob.page.getByRole('dialog', { name: 'Meeting', exact: true })).toBeVisible();
     await expect(alice.page.getByRole('region', { name: 'Outgoing call' })).toBeHidden();

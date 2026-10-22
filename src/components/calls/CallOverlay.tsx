@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Hand, LayoutGrid, Maximize2, Mic, MicOff, Minimize2, MonitorUp, Phone, PhoneOff, Pin, Settings, Users, Video, VideoOff, X } from 'lucide-react';
+import { Copy, Hand, LayoutGrid, Maximize2, Mic, MicOff, Minimize2, MonitorUp, PhoneOff, Pin, Settings, Users, Video, VideoOff, X } from 'lucide-react';
 import { useCalls } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
 import { initials } from '../../lib/chat';
 import { mediaError } from '../../lib/calls';
 import RemoteAudio from './RemoteAudio';
+import IncomingCallScreen from './IncomingCallScreen';
 import ParticipantPicker from './ParticipantPicker';
 import type { MeetingPerson } from '../../lib/meetings';
 
@@ -104,11 +105,7 @@ export default function CallOverlay() {
     {(calls.notice || calls.error) && <div role={calls.error ? 'alert' : 'status'} className={`fixed left-4 right-4 top-4 z-[130] mx-auto flex max-w-xl items-center justify-between gap-4 rounded-xl border p-4 text-sm shadow-xl ${calls.error ? 'border-red-500/40 bg-[#3b1823]' : 'border-[#5470F4]/30 bg-[#182444]'}`}>
       <span>{calls.error || calls.notice}</span><button onClick={calls.clearNotice} aria-label="Dismiss call notification"><X size={18} /></button>
     </div>}
-    {incoming && !meeting && <div role="dialog" aria-modal="false" aria-label={`Incoming ${incoming.mode === 'video' ? 'video' : 'voice'} call`} className="fixed bottom-6 right-4 z-[120] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-[#5470F4]/40 bg-[#111b2d] p-5 text-white shadow-2xl">
-      <div className="mb-4 flex items-center gap-3"><span className="rounded-full bg-[#5470F4]/20 p-3 text-[#94acff]"><Phone className="animate-pulse" /></span><div><p className="font-semibold">{incoming.callerName}</p><p className="text-sm text-gray-400">Incoming {incoming.mode === 'video' ? 'video' : 'voice'} call</p></div></div>
-      {calls.ringingBlocked && <button onClick={() => void calls.enableRinging()} className="mb-3 w-full rounded-full bg-[#5470F4] px-3 py-2 text-sm text-[#F3F4F6]">Enable ringtone</button>}
-      <div className="flex gap-2"><button disabled={busy} onClick={calls.decline} className={`${button} flex-1 bg-red-600`}><PhoneOff size={17} />Decline</button><button disabled={busy} onClick={() => void calls.answer()} className={`${button} flex-1 bg-emerald-600`}><Phone size={17} />{busy ? 'Answering…' : 'Answer'}</button></div>
-    </div>}
+    {incoming && !meeting && <IncomingCallScreen key={incoming.id} />}
     {meeting && engine && <>
       <div className="fixed left-4 top-20 z-[120] flex max-w-[calc(100vw-2rem)] flex-col gap-2" aria-live="polite">{meeting.participants.filter(person => person.socketId !== engine.socket.id).map(person => {
         const stream = engine.peers.get(person.socketId)?.media.audio;

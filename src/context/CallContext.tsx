@@ -184,7 +184,7 @@ function CallState({ children, token, userId }: { children: React.ReactNode; tok
 
   return <CallContext.Provider value={{ meeting, incoming, engine, connected, busy, error, notice, minimized, revision,
     ...ringtone, join, leave, update, invite, answer, decline, dismissIncoming, setMinimized, report: setError, clearNotice: () => { setNotice(''); setError(''); } }}>
-    {children}<CallOverlay />
+    <div className="contents" inert={!!incoming && !meeting} aria-hidden={incoming && !meeting ? true : undefined}>{children}</div><CallOverlay />
   </CallContext.Provider>;
 }
 export function useCalls() {

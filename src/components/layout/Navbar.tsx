@@ -30,6 +30,7 @@ import {
 import AdminResetPasswordModal from '../employees/AdminResetPasswordModal';
 import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import { usePwa } from '../pwa/PwaProvider';
+import NotificationBell from '../notifications/NotificationBell';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -158,6 +159,7 @@ export default function Navbar({ onToggleMobileMenu }: NavbarProps) {
 
         {/* Right: Notifications, User details & Sign Out */}
         <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          <NotificationBell />
           <Link href="/chat" aria-label={`Team chat${unreadCount ? `, ${unreadCount} unread messages` : ''}`} className="relative hidden sm:block rounded-xl border border-[#1F293D] bg-[#111827] p-2.5 text-gray-400 hover:text-[#5CC5FA]">
             <MessageSquare size={18} />
             {unreadCount > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-[#5470F4] px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}

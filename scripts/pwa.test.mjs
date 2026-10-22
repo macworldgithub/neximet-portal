@@ -39,6 +39,18 @@ test('Android notification badge is a white logo mask with transparent padding a
   assert.ok(transparent > 5000, 'the backdrop and spaces between logo strokes must stay transparent');
 });
 
+test('call notification icons are valid PNGs with a transparent white phone badge', async () => {
+  for (const [name, size] of [['call-192x192.png', 192], ['call-badge-96x96.png', 96]]) {
+    const { data, info } = await sharp(fileURLToPath(new URL(`../public/icons/${name}`, import.meta.url))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.equal(info.width, size); assert.equal(info.height, size);
+    if (size === 96) {
+      let visible = 0;
+      for (let i = 0; i < data.length; i += 4) { if (data[i + 3] > 0) { visible++; assert.deepEqual([...data.subarray(i, i + 3)], [255, 255, 255]); } }
+      assert.ok(visible > 500); assert.equal(data[3], 0);
+    }
+  }
+});
+
 function worker({ online = false, failInstall = false, failWrite = false, stores = new Map(), windows = [] } = {}) {
   const handlers = {};
   const notifications = [], fetched = [], opened = [];
@@ -215,12 +227,36 @@ test('malformed push payloads show a safe generic notification without crashing'
 });
 
 const callPayload = { userId, kind: 'incoming_call', callId: 'call-test', expiresAt: Date.now() + 45000, title: 'Incoming voice call', body: 'Sam is calling', url: `/meet?conversation=${conversationId}&call=call-test&mode=audio` };
+test('platform notifications keep their own tags, private audience, and announcement destination', async () => {
+  const sw = worker(); await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  const notice = { userId, kind: 'platform_notification', notificationId: 'notice-test', title: 'Important announcement', body: 'Design team update', url: '/announcements?id=000000000000000000000009' };
+  await sw.dispatch('push', { data: { json: () => notice } });
+  assert.equal(sw.notifications[0].tag, 'platform-notice-test'); assert.equal(sw.notifications[0].data.kind, 'platform_notification');
+  assert.equal(sw.notifications[0].data.url, `${origin}${notice.url}`); assert.equal(sw.fetched.length, 0);
+  await sw.dispatch('notificationclick', { notification: { close() {}, data: sw.notifications[0].data } });
+  assert.equal(sw.opened[0], `${origin}${notice.url}`);
+  await sw.dispatch('message', { data: { type: 'CLEAR_PUSH_ACCOUNT' } });
+  await sw.dispatch('push', { data: { json: () => notice } });
+  assert.equal(sw.notifications[1].title, 'Neximet Portal'); assert.equal(sw.notifications[1].body.includes('Design'), false);
+});
+test('platform notification clicks preserve active media and reject external or API destinations', async () => {
+  const messages = []; let focused = false;
+  const sw = worker({ windows: [{ url: `${origin}/meet`, postMessage: data => messages.push(data), focus: async () => { focused = true; }, navigate: () => { throw Error('Active call was reloaded'); } }] });
+  await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
+  await sw.dispatch('notificationclick', { notification: { close() {}, data: { userId, kind: 'platform_notification', notificationId: 'notice-test', url: '/projects/000000000000000000000009' } } });
+  assert.equal(focused, true); assert.equal(messages[0].type, 'OPEN_PLATFORM_NOTIFICATION'); assert.equal(messages[0].url, `${origin}/projects/000000000000000000000009`);
+  for (const url of ['https://evil.example/steal', '/api/auth/users', '/projects/not-an-id']) {
+    await sw.dispatch('notificationclick', { notification: { close() {}, data: { userId, kind: 'platform_notification', url } } });
+    assert.equal(messages.at(-1).url, `${origin}/notifications`);
+  }
+});
 test('incoming PWA calls request sound, vibration and actions and open the correct meeting', async () => {
   const sw = worker(); await sw.dispatch('message', { data: { type: 'PUSH_ACCOUNT', userId, apiUrl: 'https://api.neximet.test/api' } });
   await sw.dispatch('push', { data: { json: () => callPayload } });
   const notification = sw.notifications[0];
   assert.equal(notification.title, 'Incoming voice call'); assert.equal(notification.tag, 'call-call-test');
   assert.equal(notification.silent, false); assert.equal(notification.requireInteraction, true);
+  assert.equal(notification.icon, '/icons/call-192x192.png'); assert.equal(notification.badge, '/icons/call-badge-96x96.png');
   assert.ok(notification.vibrate.length > 0); assert.equal(notification.actions[0].action, 'answer');
   await sw.dispatch('notificationclick', { action: 'answer', notification: { close() {}, data: notification.data } });
   assert.equal(sw.opened[0], `${origin}${callPayload.url}`); assert.equal(sw.fetched.length, 0);

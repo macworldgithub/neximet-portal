@@ -4,6 +4,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { ChatProvider } from '../context/ChatContext';
 import { CallProvider } from '../context/CallContext';
 import { MailProvider } from '../context/MailContext';
+import { NotificationProvider } from '../context/NotificationContext';
 import { PwaProvider } from '../components/pwa/PwaProvider';
 import AppShell from '../components/layout/AppShell';
 
@@ -56,6 +57,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full bg-[#0B0F19] text-gray-100 antialiased font-sans" suppressHydrationWarning>
         <AuthProvider>
+          <NotificationProvider>
           <ChatProvider>
             <CallProvider>
             <MailProvider>
@@ -65,6 +67,7 @@ export default function RootLayout({
             </MailProvider>
             </CallProvider>
           </ChatProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>
