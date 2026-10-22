@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Inbox, Loader2, Mail, PenSquare, RefreshCw, Reply, Send, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Forward, Inbox, Loader2, Mail, PenSquare, RefreshCw, Reply, Send, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useMail } from '../../context/MailContext';
 import { apiFetch } from '../../lib/api';
@@ -37,6 +37,7 @@ function Mailbox() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<MailMessage | null>(null);
+  const [selectedSource, setSelectedSource] = useState<{ folder: 'inbox' | 'sent'; uidValidity: string } | null>(null);
   const [reading, setReading] = useState(false);
   const [draft, setDraft] = useState<MailDraft | null>(null);
   const [revision, setRevision] = useState(0);
@@ -76,10 +77,11 @@ function Mailbox() {
   const openMessage = async (message: MailMessage) => {
     readRequest.current?.abort();
     const controller = new AbortController(); readRequest.current = controller;
-    setSelected(message); setReading(true); setError('');
+    const source = { folder, uidValidity };
+    setSelected(message); setSelectedSource(null); setReading(true); setError('');
     const result = await apiFetch(`/mail/messages/${message.uid}?folder=${folder}&uidValidity=${encodeURIComponent(uidValidity)}`, { signal: controller.signal, cache: 'no-store' });
     if (controller.signal.aborted || !mounted.current) return;
-    if (result.success) { setSelected(result.emailMessage); setMessages(previous => previous.map(item => item.uid === message.uid ? { ...item, seen: true } : item)); void refreshUnread(); }
+    if (result.success) { setSelected(result.emailMessage); setSelectedSource(source); setMessages(previous => previous.map(item => item.uid === message.uid ? { ...item, seen: true } : item)); void refreshUnread(); }
     else { setSelected(null); setError(result.message || 'Could not open message.'); }
     setReading(false);
   };
@@ -93,6 +95,12 @@ function Mailbox() {
       cc: '', subject: /^re:/i.test(selected.subject) ? selected.subject : `Re: ${selected.subject}`,
       text: `\n\nOn ${dateLabel(selected.date)}, ${addressLabel(selected.from)} wrote:\n${(selected.text || '').split('\n').map(line => `> ${line}`).join('\n')}`,
     });
+  };
+  const forward = () => {
+    if (!selected || !selectedSource || reading) return;
+    setNotice('');
+    setDraft({ to: '', cc: '', subject: /^(?:fwd?|fw):/i.test(selected.subject) ? selected.subject : `Fwd: ${selected.subject}`, text: '',
+      forward: { ...selectedSource, uid: String(selected.uid), includeAttachments: true }, forwardPreview: selected });
   };
 
   return <div className="mail-page flex h-full min-h-0 min-w-0 flex-col" data-reading={!!selected || !!draft}>
@@ -134,16 +142,16 @@ function Mailbox() {
           </> : selected ? <article className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[#29344a] px-3 py-1.5">
               <button className="communication-icon" aria-label="Back to messages" title="Back to messages" onClick={closeReader}><ArrowLeft size={19} /></button>
-              <div className="flex items-center gap-1"><button className="communication-icon" disabled={reading} aria-label="Reply to email" title="Reply to email" onClick={reply}><Reply size={19} /></button><button className="communication-icon hidden md:inline-flex" aria-label={readerExpanded ? 'Show message list' : 'Expand email'} title={readerExpanded ? 'Show message list' : 'Expand email'} onClick={() => setReaderExpanded(value => !value)}>{readerExpanded ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button></div>
+              <div className="flex items-center gap-1"><button className="communication-icon" disabled={reading} aria-label="Reply to email" title="Reply to email" onClick={reply}><Reply size={19} /></button><button className="communication-icon" disabled={reading || !selectedSource} aria-label="Forward email" title="Forward email" onClick={forward}><Forward size={19} /></button><button className="communication-icon hidden md:inline-flex" aria-label={readerExpanded ? 'Show message list' : 'Expand email'} title={readerExpanded ? 'Show message list' : 'Expand email'} onClick={() => setReaderExpanded(value => !value)}>{readerExpanded ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button></div>
             </header>
             <div className="mail-message-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 lg:px-10">
               <div className="min-w-0">
                 <h2 className="break-words text-xl font-semibold sm:text-2xl">{selected.subject}</h2>
                 <div className="mt-4 space-y-1 break-words border-b border-[#29344a] pb-4 text-xs leading-relaxed text-gray-400"><p>From: {addressLabel(selected.from)}</p><p>To: {addressLabel(selected.to)}</p>{!!selected.cc?.length && <p>Cc: {addressLabel(selected.cc)}</p>}<p>{dateLabel(selected.date)}</p></div>
                 {reading ? <div role="status" className="flex items-center gap-2 py-10 text-gray-400"><Loader2 size={16} className="animate-spin" />Opening message…</div> : <>
-                  <MailBody key={`${folder}:${selected.uid}`} html={selected.html} text={selected.text} hasRemoteImages={selected.hasRemoteImages} />
-                  <MailAttachments key={`${folder}:${selected.uid}`} attachments={(selected.attachments || []).filter(item => !item.renderedInline)} />
-                  <button className={`${mailButton} mb-6`} onClick={reply}><Reply size={16} />Reply</button>
+                  <MailBody key={`body-${folder}:${selected.uid}`} html={selected.html} text={selected.text} hasRemoteImages={selected.hasRemoteImages} />
+                  <MailAttachments key={`attachments-${folder}:${selected.uid}`} attachments={(selected.attachments || []).filter(item => !item.renderedInline)} />
+                  <div className="mb-6 flex flex-wrap gap-2"><button className={mailButton} onClick={reply}><Reply size={16} />Reply</button><button className={mailButton} disabled={!selectedSource} onClick={forward}><Forward size={16} />Forward</button></div>
                 </>}
               </div>
             </div>

@@ -10,7 +10,7 @@ export default function MailBody({ html, text, hasRemoteImages = false }: { html
   useEffect(() => () => cleanup.current?.(), []);
 
   return <section aria-label="Email message" className="my-5 overflow-hidden rounded-xl border border-[#1F293D] bg-[#111827] text-[#F3F4F6]">
-    {hasRemoteImages && !externalImages && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1F293D] bg-[#161F30] px-4 py-2 text-xs text-gray-400"><span>External images are hidden.</span><button className="font-medium text-[#5CC5FA] underline" onClick={() => setExternalImages(true)}>Show external images</button></div>}
+    {hasRemoteImages && !externalImages && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1F293D] bg-[#161F30] px-4 py-2 text-xs text-gray-400"><span>External images are hidden.</span><button type="button" className="font-medium text-[#5CC5FA] underline" onClick={() => setExternalImages(true)}>Show external images</button></div>}
     {html ? <iframe
       title="Formatted email message"
       srcDoc={mailDocument(html, externalImages)}

@@ -4,8 +4,14 @@ import { useState } from 'react';
 import { Loader2, Send, X } from 'lucide-react';
 import { apiPost } from '../../lib/api';
 import { mailButton, mailInput } from './MailSettings';
+import { addressLabel, type MailMessage } from '../../lib/mail';
+import MailBody from './MailBody';
 
-export interface MailDraft { to: string; cc: string; subject: string; text: string }
+export interface MailDraft {
+  to: string; cc: string; subject: string; text: string;
+  forward?: { folder: 'inbox' | 'sent'; uid: string; uidValidity: string; includeAttachments: boolean };
+  forwardPreview?: MailMessage;
+}
 
 export default function MailComposer({ email, initial, onSent, onClose }: { email: string; initial: MailDraft; onSent: (notice: string) => void; onClose: () => void }) {
   const [draft, setDraft] = useState(initial);
@@ -15,23 +21,27 @@ export default function MailComposer({ email, initial, onSent, onClose }: { emai
   const [attempted, setAttempted] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const close = () => { if (draft.to || draft.cc || draft.subject || draft.text) setConfirmDiscard(true); else onClose(); };
-  const update = (key: keyof MailDraft, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
+  const update = (key: 'to' | 'cc' | 'subject' | 'text', value: string) => setDraft(previous => ({ ...previous, [key]: value }));
 
   return <section aria-labelledby="compose-title" className="mail-compose flex min-h-0 min-w-0 flex-1 flex-col bg-[#111827]">
-    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#29344a] px-4 py-2"><div className="min-w-0"><h2 id="compose-title" className="text-base font-semibold">New message</h2><p className="mt-0.5 truncate text-xs text-gray-500">From: {email}</p></div><button aria-label="Close composer" className="communication-icon" disabled={sending} onClick={close}><X size={19} /></button></header>
+    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#29344a] px-4 py-2"><div className="min-w-0"><h2 id="compose-title" className="text-base font-semibold">{draft.forward ? 'Forward email' : 'New message'}</h2><p className="mt-0.5 truncate text-xs text-gray-500">From: {email}</p></div><button aria-label="Close composer" className="communication-icon" disabled={sending} onClick={close}><X size={19} /></button></header>
     <form className="flex min-h-0 flex-1 flex-col" onSubmit={async event => {
       event.preventDefault(); if (sending) return;
       setSending(true); setError(''); setAttempted(true);
-      const response = await apiPost('/mail/send', { ...draft, requestId });
+      const response = await apiPost('/mail/send', { to: draft.to, cc: draft.cc, subject: draft.subject, text: draft.text, ...(draft.forward ? { forward: draft.forward } : {}), requestId });
       setSending(false);
-      if (response.success) onSent([response.rejected?.length ? `Email accepted, except for: ${response.rejected.join(', ')}.` : 'Email sent.', response.sentCopySaved ? '' : 'The Sent copy could not be saved. Check Hostinger webmail before resending.'].filter(Boolean).join(' '));
+      if (response.success) onSent([response.rejected?.length ? `Email accepted, except for: ${response.rejected.join(', ')}.` : draft.forward ? 'Email forwarded.' : 'Email sent.', response.sentCopySaved ? '' : 'The Sent copy could not be saved. Check Hostinger webmail before resending.'].filter(Boolean).join(' '));
       else { if (response.safeToEdit) setAttempted(false); setError(response.message || 'The send could not be confirmed. Check Sent before trying again.'); }
     }}>
       <fieldset disabled={sending || attempted} className="mail-compose-fields flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 sm:px-6">
         <label className="flex shrink-0 items-center gap-3 text-xs text-gray-400"><span className="w-12 shrink-0">To</span><input aria-label="To" autoFocus={!initial.to} required maxLength={6000} className={mailInput} value={draft.to} onChange={event => update('to', event.target.value)} placeholder="recipient@example.com" /></label>
         <label className="flex shrink-0 items-center gap-3 text-xs text-gray-400"><span className="w-12 shrink-0">Cc</span><input aria-label="Cc" maxLength={6000} className={mailInput} value={draft.cc} onChange={event => update('cc', event.target.value)} placeholder="Optional recipients" /></label>
         <label className="flex shrink-0 items-center gap-3 text-xs text-gray-400"><span className="w-12 shrink-0">Subject</span><input aria-label="Subject" required maxLength={998} className={mailInput} value={draft.subject} onChange={event => update('subject', event.target.value)} /></label>
-        <label className="flex min-h-40 flex-1 flex-col gap-2 text-xs text-gray-400">Message<textarea autoFocus={!!initial.to} required maxLength={100000} rows={5} className={`${mailInput} min-h-32 flex-1 resize-none leading-relaxed`} value={draft.text} onChange={event => update('text', event.target.value)} placeholder="Write your message…" /></label>
+        <label className={`flex min-h-40 flex-col gap-2 text-xs text-gray-400 ${draft.forward ? 'shrink-0' : 'flex-1'}`}>{draft.forward ? 'Add a note (optional)' : 'Message'}<textarea autoFocus={!!initial.to} required={!draft.forward} maxLength={100000} rows={5} className={`${mailInput} min-h-32 flex-1 resize-none leading-relaxed`} value={draft.text} onChange={event => update('text', event.target.value)} placeholder={draft.forward ? 'Add a message for the recipient…' : 'Write your message…'} /></label>
+        {draft.forward && draft.forwardPreview && <div className="shrink-0 space-y-3 border-t border-[#29344a] pt-4">
+          {!!draft.forwardPreview.attachments?.length && <div className="rounded-xl border border-[#29344a] p-3 text-xs text-gray-300"><label className="flex items-center gap-2"><input type="checkbox" checked={draft.forward.includeAttachments} onChange={event => { const includeAttachments = event.target.checked; setDraft(previous => ({ ...previous, forward: previous.forward ? { ...previous.forward, includeAttachments } : undefined })); }} />Include original attachments ({draft.forwardPreview.attachments.length})</label><ul className="mt-2 space-y-1 break-words text-gray-500">{draft.forwardPreview.attachments.map((item, index) => <li key={index}>{item.filename}{item.inline ? ' · embedded image' : ''}</li>)}</ul></div>}
+          <details open className="rounded-xl border border-[#29344a] p-3"><summary className="cursor-pointer text-sm font-medium text-gray-300">Forwarded message</summary><div className="mt-3 space-y-1 break-words text-xs text-gray-400"><p>From: {addressLabel(draft.forwardPreview.from)}</p><p>To: {addressLabel(draft.forwardPreview.to)}</p><p>Subject: {draft.forwardPreview.subject}</p>{draft.forwardPreview.date && <p>{new Date(draft.forwardPreview.date).toLocaleString()}</p>}</div><MailBody html={draft.forwardPreview.html} text={draft.forwardPreview.text} hasRemoteImages={draft.forwardPreview.hasRemoteImages} /></details>
+        </div>}
       </fieldset>
       <footer className="mail-compose-actions shrink-0 space-y-2 border-t border-[#29344a] bg-[#111827] px-4 py-3 sm:px-6">
         {error && <div className="max-h-24 space-y-1 overflow-y-auto"><p role="alert" className="text-sm text-red-300">{error}</p>{attempted && <p className="text-xs text-gray-400">This message is locked to prevent duplicate sends. Check Sent before composing again.</p>}</div>}

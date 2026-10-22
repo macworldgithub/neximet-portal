@@ -7,6 +7,7 @@ import { MailProvider } from '../context/MailContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { PwaProvider } from '../components/pwa/PwaProvider';
 import AppShell from '../components/layout/AppShell';
+import AppNotificationProvider from '../components/notifications/AppNotificationProvider';
 
 export const viewport: Viewport = {
   themeColor: '#0B0F19',
@@ -62,7 +63,9 @@ export default function RootLayout({
             <CallProvider>
             <MailProvider>
               <PwaProvider>
+                <AppNotificationProvider>
                 <AppShell>{children}</AppShell>
+                </AppNotificationProvider>
               </PwaProvider>
             </MailProvider>
             </CallProvider>

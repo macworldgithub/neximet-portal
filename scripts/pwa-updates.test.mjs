@@ -94,6 +94,7 @@ test('each build gets a distinct service worker so unchanged templates still det
     const first = await generateServiceWorker(outputs[0]);
     const second = await generateServiceWorker(outputs[1]);
     assert.notEqual(first, second);
+    assert.equal(JSON.parse(await readFile(join(directory, 'app-version.json'), 'utf8')).version, second);
     for (const [index, version] of [first, second].entries()) {
       const generated = await readFile(outputs[index], 'utf8');
       assert.ok(generated.includes(`\${CACHE_PREFIX}${version}`));
@@ -102,6 +103,7 @@ test('each build gets a distinct service worker so unchanged templates still det
     }
   } finally {
     await Promise.all(outputs.map((path) => unlink(path).catch(() => {})));
+    await unlink(join(directory, 'app-version.json')).catch(() => {});
     await rmdir(directory);
   }
 });

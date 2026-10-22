@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, RefreshCw } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
 import { useNotifications, type PortalNotification } from '../../context/NotificationContext';
 import { apiFetch } from '../../lib/api';
-import ChatNotifications from '../../components/chat/ChatNotifications';
+import { useAppNotifications } from '../../components/notifications/AppNotificationProvider';
 
 export default function NotificationsPage() {
-  const { user } = useAuth(); const router = useRouter(); const inbox = useNotifications();
+  const device = useAppNotifications(); const router = useRouter(); const inbox = useNotifications();
   const head = inbox.notifications[0]?._id;
   const [pages, setPages] = useState<{ head?: string; items: PortalNotification[]; cursor: string | null }>({ items: [], cursor: null });
   const older = pages.head === head ? pages.items : []; const cursor = pages.cursor;
@@ -28,7 +27,7 @@ export default function NotificationsPage() {
     router.push(notification.url);
   };
   return <div className="space-y-6 p-4 sm:p-8">
-    <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="flex items-center gap-3 text-2xl font-semibold"><Bell className="text-[#5CC5FA]" />Notifications</h1><p className="mt-2 text-sm text-gray-400">{inbox.unread} unread · Updates for you and your work.</p></div>{user && <ChatNotifications userId={user.id} />}</div>
+    <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="flex items-center gap-3 text-2xl font-semibold"><Bell className="text-[#5CC5FA]" />Notifications</h1><p className="mt-2 text-sm text-gray-400">{inbox.unread} unread · Updates for you and your work.</p></div><button onClick={device.openSettings} className="rounded-xl border border-[#23314a] px-4 py-3 text-sm">Notification settings</button></div>
     <div className="flex flex-wrap gap-3"><button disabled={!inbox.unread} onClick={() => void inbox.readAll()} className="flex items-center gap-2 rounded-xl border border-[#23314a] px-4 py-2 text-sm disabled:opacity-40"><CheckCheck size={17} />Mark all as read</button><button onClick={() => void inbox.refresh()} className="flex items-center gap-2 rounded-xl border border-[#23314a] px-4 py-2 text-sm"><RefreshCw size={16} />Refresh</button></div>
     {(error || inbox.error) && <p role="alert" className="text-sm text-rose-300">{error || inbox.error}</p>}
     <div className="overflow-hidden rounded-2xl border border-[#23314a] bg-[#111827]">

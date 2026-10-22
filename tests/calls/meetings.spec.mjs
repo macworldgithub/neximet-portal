@@ -37,6 +37,67 @@ test('leadership publishes targeted announcements and recipients receive private
 });
 
 const api = 'http://127.0.0.1:4012/api';
+async function mockPush(person, release = () => 'qa-release-1') {
+  const counts = { subscriptions: 0 };
+  await person.context.route('**/app-version.json', route => route.fulfill({ json: { version: release() } }));
+  await person.context.route('**/api/chat/push/config', route => route.fulfill({ json: { success: true, configured: true, publicKey: Buffer.from([4, ...Array(64).fill(1)]).toString('base64url') } }));
+  await person.context.route('**/api/chat/push/subscriptions', route => { counts.subscriptions++; return route.fulfill({ json: { success: true } }); });
+  await person.context.addInitScript(() => {
+    const permissionKey = 'qa:notification-permission';
+    class MockNotification {
+      static get permission() { return localStorage.getItem(permissionKey) || 'default'; }
+      static async requestPermission() {
+        localStorage.setItem('qa:permission-requests', String(Number(localStorage.getItem('qa:permission-requests') || 0) + 1));
+        window.__notificationGesture = navigator.userActivation.isActive;
+        localStorage.setItem(permissionKey, 'granted'); return 'granted';
+      }
+    }
+    Object.defineProperty(window, 'Notification', { configurable: true, value: MockNotification });
+    const subscription = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/qa-device', keys: { p256dh: 'qa', auth: 'qa' } }), unsubscribe: async () => { localStorage.removeItem('qa:subscribed'); return true; } };
+    const registration = { active: { postMessage() {} }, pushManager: { getSubscription: async () => localStorage.getItem('qa:subscribed') ? subscription : null, subscribe: async () => { localStorage.setItem('qa:subscribed', 'yes'); return subscription; } } };
+    const serviceWorker = new EventTarget();
+    Object.assign(serviceWorker, { register: async () => registration, getRegistration: async () => registration, ready: Promise.resolve(registration) });
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: serviceWorker });
+  });
+  return counts;
+}
+test('one app-wide prompt enables all notification types and survives navigation and restart', async ({ browser, request }) => {
+  const person = await account(browser, request, 0, { width: 390, height: 844 });
+  try {
+    const counts = await mockPush(person); await person.page.goto('/meet');
+    const prompt = person.page.getByRole('dialog', { name: 'App notifications', exact: true }); await expect(prompt).toBeVisible();
+    expect(await person.page.evaluate(() => localStorage.getItem('qa:permission-requests'))).toBeNull();
+    await person.page.screenshot({ path: 'test-results/calls/app-notification-prompt.png' });
+    await prompt.getByRole('button', { name: 'Allow notifications', exact: true }).click(); await expect(prompt).toBeHidden();
+    expect(await person.page.evaluate(() => window.__notificationGesture)).toBe(true); expect(counts.subscriptions).toBeGreaterThan(0);
+    await expect(person.page.getByRole('button', { name: 'Enable notifications', exact: true })).toHaveCount(0);
+    await person.page.goto('/chat'); await expect(person.page.getByRole('button', { name: 'Enable notifications', exact: true })).toHaveCount(0);
+    await person.page.goto('/notifications'); await person.page.getByRole('button', { name: 'Notification settings', exact: true }).click();
+    await expect(prompt.getByRole('heading', { name: 'Notifications are on', exact: true })).toBeVisible();
+    await prompt.getByRole('button', { name: 'Done', exact: true }).click(); await person.page.reload();
+    await expect(person.page.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible(); await expect(prompt).toBeHidden();
+    expect(await person.page.evaluate(() => localStorage.getItem('qa:permission-requests'))).toBe('1'); expect(person.errors).toEqual([]);
+  } finally { await person.close(); }
+});
+test('notification prompt remembers Not now until the next app update without requesting browser permission', async ({ browser, request }) => {
+  const person = await account(browser, request, 1); let release = 'qa-release-1';
+  try {
+    await mockPush(person, () => release); await person.page.goto('/meet');
+    const prompt = person.page.getByRole('dialog', { name: 'App notifications', exact: true }); await expect(prompt).toBeVisible();
+    await prompt.getByRole('button', { name: 'Not now', exact: true }).click(); await person.page.reload(); await connected(person.page); await person.page.waitForTimeout(1200); await expect(prompt).toBeHidden();
+    release = 'qa-release-2'; await person.page.reload(); await expect(prompt).toBeVisible();
+    expect(await person.page.evaluate(() => localStorage.getItem('qa:permission-requests'))).toBeNull();
+  } finally { await person.close(); }
+});
+test('blocked permission gives recovery instructions and never repeatedly requests permission', async ({ browser, request }) => {
+  const person = await account(browser, request, 2);
+  try {
+    await mockPush(person); await person.context.addInitScript(() => localStorage.setItem('qa:notification-permission', 'denied'));
+    await person.page.goto('/meet'); const prompt = person.page.getByRole('dialog', { name: 'App notifications', exact: true }); await expect(prompt).toBeVisible();
+    await expect(prompt.getByText(/Notifications are blocked for Neximet/)).toBeVisible(); await expect(prompt.getByRole('button', { name: 'Allow notifications', exact: true })).toHaveCount(0);
+    expect(await person.page.evaluate(() => localStorage.getItem('qa:permission-requests'))).toBeNull();
+  } finally { await person.close(); }
+});
 async function account(browser, request, index, viewport, userAgent) {
   const result = await (await request.post(`${api}/auth/login`, { data: { email: `chat-qa-${index}@example.test`, password: 'chat-qa-only' } })).json();
   // Independent browser processes give each synthetic participant its own

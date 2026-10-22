@@ -15,6 +15,7 @@ build/
 dist/
 .turbo/
 /public/sw-build.js
+/public/app-version.json
 
 # Environment files
 .env

@@ -8,7 +8,6 @@ import { useChat } from '../../context/ChatContext';
 import { API_URL, apiFetch, getToken } from '../../lib/api';
 import { chatTitle, initials, mergeMessages, messageStatus, type ChatConversation, type ChatMessage } from '../../lib/chat';
 import NewChatModal from '../../components/chat/NewChatModal';
-import ChatNotifications from '../../components/chat/ChatNotifications';
 
 type PendingMessage = { clientId: string; chatId: string; text: string; file?: File; state: 'sending' | 'failed'; error?: string };
 const time = (date: string) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -306,7 +305,7 @@ export default function ChatPage() {
             <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${chat.kind === 'group' ? 'bg-purple-500/15 text-purple-300' : 'bg-[#5470F4]/15 text-[#5CC5FA]'}`}>{chat.kind === 'group' ? <Users size={20} /> : initials(label)}</span>
             <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{label}</span>{chat.lastMessage && <span className="shrink-0 text-[10px] text-gray-500">{new Date(chat.lastMessage.createdAt).toDateString() === new Date().toDateString() ? time(chat.lastMessage.createdAt) : new Date(chat.lastMessage.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>}</span><span className="mt-1 flex items-center justify-between gap-2"><span className="truncate text-xs text-gray-400">{chat.lastMessage?.text || chat.lastMessage?.attachment?.name || 'Say hello'}</span>{!!chat.unreadCount && <span aria-label={`${chat.unreadCount} unread messages`} className="rounded-full bg-[#5470F4] px-2 py-0.5 text-[10px] font-bold text-white">{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>}</span></span>
           </button>; })}
-        </div><div className="shrink-0 border-t border-[#1F293D] px-3 py-2"><ChatNotifications userId={user.id} /></div>
+        </div>
       </aside>
       {active ? <section aria-label={`Chat with ${title}`} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-2 py-2 sm:px-4"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
