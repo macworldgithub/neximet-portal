@@ -58,7 +58,7 @@ function NotificationState({ children, userId }: { children: React.ReactNode; us
       if (event.data?.type !== 'OPEN_PLATFORM_NOTIFICATION' || event.data.userId !== userId) return;
       try {
         const url = new URL(event.data.url, location.origin);
-        if (url.origin !== location.origin || !(['/announcements', '/notifications', '/mail', '/projects', '/leaves', '/attendance', '/deduction-settings', '/dashboard', '/employees'].includes(url.pathname) || /^\/projects\/[a-f\d]{24}$/i.test(url.pathname))) return;
+        if (url.origin !== location.origin || !(['/announcements', '/notifications', '/client', '/client/finance', '/clients', '/mail', '/projects', '/leaves', '/attendance', '/deduction-settings', '/dashboard', '/employees'].includes(url.pathname) || /^\/projects\/[a-f\d]{24}$/i.test(url.pathname))) return;
         if (/^[a-f\d]{24}$/i.test(event.data.notificationId || '')) void read(event.data.notificationId);
         router.push(url.pathname + url.search);
       } catch { /* Ignore invalid navigation payloads. */ }

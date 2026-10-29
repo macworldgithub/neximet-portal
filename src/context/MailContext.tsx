@@ -8,7 +8,7 @@ const MailContext = createContext({ unread: 0, refresh: async () => {} });
 
 export function MailProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  return <MailState key={user?.id || 'signed-out'} userId={user?.id}>{children}</MailState>;
+  return <MailState key={user?.id || 'signed-out'} userId={user?.role === 'Client' ? undefined : user?.id}>{children}</MailState>;
 }
 
 function MailState({ children, userId }: { children: React.ReactNode; userId?: string }) {

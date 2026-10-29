@@ -103,7 +103,7 @@ export default function LoginPage() {
               <span>Sign In with Credentials</span>
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              Enter your corporate email and password to securely access your portal dashboard.
+              Enter your account email and password to securely access your portal dashboard.
             </p>
           </div>
 

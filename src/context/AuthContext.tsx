@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiGet, apiPost, getToken, setToken, removeToken } from '../lib/api';
 import { disablePush } from '../lib/push';
 
-export type UserRole = 'CEO' | 'Super Admin' | 'Project Manager' | 'Team Manager' | 'Team Member';
+export type UserRole = 'CEO' | 'Super Admin' | 'Project Manager' | 'Team Manager' | 'Team Member' | 'Client';
 export type Department =
   | 'Executive'
   | 'Software Development'
@@ -104,9 +104,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
       return { success: false, message: res.message || 'Invalid email or password' };
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoading(false);
-      return { success: false, message: err?.message || 'Login request failed' };
+      return { success: false, message: err instanceof Error ? err.message : 'Login request failed' };
     }
   };
 

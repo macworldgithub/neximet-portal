@@ -16,9 +16,12 @@
     "test:attendance": "node --test scripts/attendance.test.mjs scripts/attendance-api.test.mjs",
     "test:payroll:ui": "playwright test --config=playwright.payroll.config.mjs",
     "check:production": "node scripts/check-production-env.mjs",
-    "test:production": "node --test scripts/production.test.mjs"
+    "test:production": "node --test scripts/production.test.mjs",
+    "test:portal:ui": "playwright test --config=playwright.portal.config.mjs"
   },
-  "engines": { "node": ">=20.0.0" },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "@next/env": "16.3.5",
     "clsx": "^2.1.1",

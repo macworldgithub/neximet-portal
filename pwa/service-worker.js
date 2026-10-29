@@ -62,7 +62,7 @@ self.addEventListener('message', (event) => {
 function appUrl(value, fallback = '/chat') {
   try {
     const url = new URL(value, self.location.origin);
-    return url.origin === self.location.origin && (['/chat', '/meet', '/announcements', '/notifications', '/mail', '/projects', '/leaves', '/attendance', '/deduction-settings', '/dashboard', '/employees'].includes(url.pathname) || /^\/projects\/[a-f\d]{24}$/i.test(url.pathname)) ? url.href : `${self.location.origin}${fallback}`;
+    return url.origin === self.location.origin && (['/chat', '/meet', '/announcements', '/notifications', '/client', '/client/finance', '/clients', '/mail', '/projects', '/leaves', '/attendance', '/deduction-settings', '/dashboard', '/employees'].includes(url.pathname) || /^\/projects\/[a-f\d]{24}$/i.test(url.pathname)) ? url.href : `${self.location.origin}${fallback}`;
   } catch { return `${self.location.origin}${fallback}`; }
 }
 self.addEventListener('push', (event) => event.waitUntil((async () => {

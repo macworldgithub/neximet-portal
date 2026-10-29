@@ -29,6 +29,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, isLoginPage, router, pathname]);
 
+  const clientAllowed = pathname === '/client' || pathname.startsWith('/client/') || ['/chat', '/meet', '/notifications'].includes(pathname);
+  useEffect(() => {
+    if (!loading && user?.role === 'Client' && !isLoginPage && !clientAllowed) router.replace('/client');
+  }, [loading, user, isLoginPage, clientAllowed, router]);
+
   if (isLoginPage) {
     return (
       <>
@@ -55,7 +60,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user || (user.role === 'Client' && !clientAllowed)) {
     return null;
   }
 

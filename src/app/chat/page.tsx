@@ -9,6 +9,7 @@ import { API_URL, apiFetch, getToken } from '../../lib/api';
 import { attachmentPath, chatTitle, initials, mergeMessages, messageAttachments, messageStatus, validateChatFiles, type ChatConversation, type ChatMessage } from '../../lib/chat';
 import { uploadChatMessage } from '../../lib/chatUploads';
 import NewChatModal from '../../components/chat/NewChatModal';
+import AddChatMembersModal from '../../components/chat/AddChatMembersModal';
 import ChatAttachment from '../../components/chat/ChatAttachment';
 
 type PendingMessage = { clientId: string; chatId: string; text: string; files?: File[]; progress?: number; state: 'sending' | 'failed'; error?: string };
@@ -17,7 +18,8 @@ const day = (date: string) => new Date(date).toLocaleDateString([], { day: 'nume
 const field = 'w-full rounded-xl border border-[#1F293D] bg-[#0B0F19] text-sm outline-none focus:border-[#5470F4]';
 
 export default function ChatPage() {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
+  const [addingMembers, setAddingMembers] = useState(false);
   const { conversations, loading: inboxLoading, error: inboxError, refresh, connected, subscribe, command } = useChat();
   const [active, setActive] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -321,7 +323,7 @@ export default function ChatPage() {
         {dragging && <div role="status" className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-[#5CC5FA] bg-[#0B0F19]/90 p-6 text-center"><div><Paperclip className="mx-auto mb-3 text-[#5CC5FA]" size={36} /><p className="text-lg font-semibold">Drop files to attach</p><p className="mt-2 text-sm text-gray-300">Up to 20 files · 100 MB total per message</p></div></div>}
         <header className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-2 py-2 sm:px-4"><button onClick={() => setActive(null)} aria-label="Back to conversations" className="rounded-lg p-2 text-gray-400 md:hidden"><ArrowLeft size={20} /></button><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#5470F4]/15 text-sm font-semibold text-[#5CC5FA]">{active.kind === 'group' ? <Users size={20} /> : initials(title)}</span><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{title}</h2><p className="truncate text-xs text-gray-400">{active.kind === 'group' ? `${active.members.length} members` : active.members.find((member) => member.user?._id !== user.id)?.user?.department || 'Teammate'}</p></div><button onClick={() => setShowMembers(!showMembers)} aria-label="View conversation members" aria-expanded={showMembers} className="rounded-xl p-2 text-gray-400 hover:bg-[#1F293D]"><Users size={20} /></button></header>
         <div className="flex shrink-0 items-center gap-2 border-b border-[#1F293D] px-3 py-2 sm:px-4"><Link href={`/meet?conversation=${active._id}&mode=audio`} className="flex items-center gap-2 rounded-lg bg-[#5470F4]/15 px-3 py-2 text-xs text-[#9db2ff]"><Phone size={16} />Voice call</Link><Link href={`/meet?conversation=${active._id}&mode=video`} className="flex items-center gap-2 rounded-lg bg-[#5470F4]/15 px-3 py-2 text-xs text-[#9db2ff]"><Video size={16} />Video call</Link></div>
-        {showMembers && <div className="max-h-40 overflow-y-auto border-b border-[#1F293D] bg-[#0B0F19] p-4"><p className="mb-2 text-xs font-semibold text-gray-400">Conversation members</p>{active.members.map((member, index) => <p key={member.user?._id || index} className="py-1 text-sm">{member.user?.name || 'Former teammate'}{member.user?._id === user.id ? ' (you)' : ''}<span className="ml-2 text-xs text-gray-500">{member.user?.isActive === false ? 'Inactive' : member.user?.role}</span></p>)}</div>}
+        {showMembers && <div className="max-h-40 overflow-y-auto border-b border-[#1F293D] bg-[#0B0F19] p-4"><div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-semibold text-gray-400">Conversation members</p>{isSuperAdmin && <button onClick={() => setAddingMembers(true)} className="text-xs text-[#9db2ff]">Add members</button>}</div>{active.members.map((member, index) => <p key={member.user?._id || index} className="py-1 text-sm">{member.user?.name || 'Former teammate'}{member.user?._id === user.id ? ' (you)' : ''}<span className="ml-2 text-xs text-gray-500">{member.user?.isActive === false ? 'Inactive' : member.user?.role}</span></p>)}</div>}
         {(!online || error) && <p role="status" className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">{!online ? 'You are offline. Your drafts are kept while this page stays open.' : `${error} · Reconnecting automatically…`}</p>}
         <div className="relative min-h-0 flex-1">
         <div ref={scroller} data-chat-scroll onScroll={() => { const node = scroller.current; if (node) { nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100; if (nearBottom.current) setNewMessagesBelow(false); } }} className="h-full space-y-2 overflow-y-auto overscroll-contain bg-[#0B0F19]/50 px-3 py-4 sm:px-6">
@@ -352,6 +354,7 @@ export default function ChatPage() {
         </form>
       </section> : <div className="hidden flex-1 flex-col items-center justify-center px-8 text-center md:flex"><div className="mb-5 rounded-3xl border border-[#5470F4]/20 bg-[#5470F4]/10 p-6"><MessageSquare className="text-[#5CC5FA]" size={44} /></div><h2 className="text-xl font-semibold">Your team, one conversation away</h2><p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-400">Share updates, ask questions, and keep everyone connected. Choose a conversation or start a new one.</p><button onClick={() => setNewChat(true)} className="gradient-btn mt-6 rounded-xl px-5 py-3 text-sm font-semibold">Start a conversation</button></div>}
     </div>
+    {addingMembers && active && <AddChatMembersModal conversation={active} onClose={() => setAddingMembers(false)} onSaved={chat => { setActive(chat); setAddingMembers(false); void refresh(); }} />}
     {newChat && <NewChatModal onClose={() => setNewChat(false)} onCreated={(chat) => { setNewChat(false); selectChat(chat); void refresh(); }} />}
   </div>;
 }

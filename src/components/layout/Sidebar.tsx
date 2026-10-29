@@ -79,7 +79,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
   }, [mobileOpen, onCloseMobile, motoZ3, drawerOnly]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === 'Client') return;
     const fetchCounts = async () => {
       try {
         const [projRes, usersRes] = await Promise.all([
@@ -101,7 +101,14 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
 
   const isExecutive = isSuperAdmin || user?.role === 'CEO';
 
-  const navItems = [
+  const navItems = user?.role === 'Client' ? [
+    { label: 'Client overview', href: '/client', icon: LayoutDashboard, badge: null },
+    { label: 'Finance', href: '/client/finance', icon: Coins, badge: null },
+    { label: 'Chat with Neximet', href: '/chat', icon: MessageSquare, badge: unreadCount ? `${unreadCount} unread` : null },
+    { label: 'Meetings', href: '/meet', icon: Video, badge: null },
+    { label: 'Notifications', href: '/notifications', icon: Bell, badge: null },
+  ] : [
+    ...(isSuperAdmin ? [{ label: 'Clients & Finance', href: '/clients', icon: Building2, badge: null }] : []),
     { label: 'Announcements', href: '/announcements', icon: Megaphone, badge: null },
     { label: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications ? `${unreadNotifications} unread` : null },
     { label: 'Meetings', href: '/meet', icon: Video, badge: null },
@@ -199,7 +206,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
       >
         {/* Brand Header */}
         <div className="h-20 shrink-0 px-5 flex items-center justify-between gap-2 border-b border-[#1F293D] bg-[#0E1424]">
-          <Link href="/dashboard" onClick={handleLinkClick} className="min-w-0 flex items-center gap-2 group">
+          <Link href={user?.role === 'Client' ? '/client' : '/dashboard'} onClick={handleLinkClick} className="min-w-0 flex items-center gap-2 group">
             <img
               src="/neximet-logo.avif"
               alt="Neximet"
@@ -250,7 +257,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
               </div>
             </div>
             <p className="text-[11px] text-gray-400 mt-2 truncate">
-              {user.designation} • {user.department}
+              {user.role === 'Client' ? 'Neximet client portal' : `${user.designation} • ${user.department}`}
             </p>
           </div>
         )}
@@ -264,7 +271,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
             <nav className="space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const isActive = pathname === item.href || (item.href !== '/client' && pathname.startsWith(`${item.href}/`));
                 return (
                   <Link
                     key={item.href}
@@ -297,10 +304,11 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
           <div>
             <div className="flex items-center justify-between px-3 mb-2">
               <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                {user?.role === 'CEO' || user?.role === 'Super Admin' ? 'Departments' : 'My Team'}
+                {user?.role === 'Client' ? 'Client support' : user?.role === 'CEO' || user?.role === 'Super Admin' ? 'Departments' : 'My Team'}
               </p>
               <Building2 className="w-3.5 h-3.5 text-gray-500" />
             </div>
+            {user?.role === 'Client' && <p className="px-3 text-xs text-gray-400">Contact Neximet through Chat or schedule a meeting.</p>}
             <div className="space-y-1.5">
               {(user?.role === 'CEO' || user?.role === 'Super Admin'
                 ? departments

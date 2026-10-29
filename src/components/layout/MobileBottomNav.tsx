@@ -7,9 +7,12 @@ import {
   LayoutDashboard,
   FolderKanban,
   Clock,
+  Coins,
+  Video,
   MessageSquare,
   Menu,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 
 interface MobileBottomNavProps {
@@ -24,7 +27,13 @@ export default function MobileBottomNav({
   const pathname = usePathname();
   const { unreadCount } = useChat();
 
-  const navItems = [
+  const { user } = useAuth();
+  const navItems = user?.role === 'Client' ? [
+    { label: 'Overview', href: '/client', icon: LayoutDashboard, isCenter: false },
+    { label: 'Finance', href: '/client/finance', icon: Coins, isCenter: false },
+    { label: 'Meet', href: '/meet', icon: Video, isCenter: false },
+    { label: 'Chat', href: '/chat', icon: MessageSquare, isCenter: false },
+  ] : [
     {
       label: 'Home',
       href: '/dashboard',
@@ -56,7 +65,7 @@ export default function MobileBottomNav({
       <div className="flex items-center justify-around max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
+          const isActive = pathname === item.href || (!['/dashboard', '/client'].includes(item.href) && pathname.startsWith(`${item.href}/`));
 
           if (item.isCenter) {
             return (
