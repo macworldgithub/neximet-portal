@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import { createPortal } from 'react-dom';
 import { Download, Expand, ImageIcon, Loader2, Play, RefreshCw, X } from 'lucide-react';
 import { API_URL, getToken } from '../../lib/api';
-import type { ChatMessage } from '../../lib/chat';
+import { attachmentPath, type ChatMessage } from '../../lib/chat';
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
@@ -32,8 +32,9 @@ function PhotoViewer({ url, name, onClose, onDownload }: { url: string; name: st
     if (event.key === 'Tab') { const controls = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')]; const first = controls[0], last = controls.at(-1); if (event.shiftKey && (document.activeElement === first || document.activeElement === root.current)) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === root.current)) { event.preventDefault(); first?.focus(); } }
   }}><header className="flex shrink-0 items-center gap-3 border-b border-[#23314a] px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]"><p className="min-w-0 flex-1 truncate text-sm">{name}</p><button onClick={onDownload} aria-label="Download photo" className="rounded-xl p-3 hover:bg-white/10"><Download size={20} /></button><button onClick={onClose} aria-label="Close photo" className="rounded-xl p-3 hover:bg-white/10"><X size={22} /></button></header><div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3" onClick={event => { if (event.target === event.currentTarget) onClose(); }}><img src={url} alt={name} className="max-h-full max-w-full object-contain" /></div></div>, document.body);
 }
-export default function ChatAttachment({ message, onDownload }: { message: ChatMessage; onDownload: () => void }) {
+export default function ChatAttachment({ message, attachmentIndex = 0, onDownload }: { message: ChatMessage; attachmentIndex?: number; onDownload: () => void }) {
   const attachment = message.attachment!; const kind = attachmentKind(attachment);
+  const previewPath = attachmentPath(message, attachmentIndex, true);
   const root = useRef<HTMLElement>(null); const player = useRef<HTMLVideoElement>(null);
   const request = useRef<AbortController | null>(null); const resource = useRef(''); const wantedPlay = useRef(false);
   const [visible, setVisible] = useState(false); const [url, setUrl] = useState(''); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [expanded, setExpanded] = useState(false); const [decodeFailed, setDecodeFailed] = useState(false);
@@ -55,7 +56,7 @@ export default function ChatAttachment({ message, onDownload }: { message: ChatM
     const controller = new AbortController(); request.current = controller; const token = getToken();
     setLoading(true); setError(''); setDecodeFailed(false);
     try {
-      const response = await fetch(`${API_URL}/chat/conversations/${message.conversation}/messages/${message._id}/attachment?preview=1`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: controller.signal });
+      const response = await fetch(`${API_URL}${previewPath}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: controller.signal });
       if (!response.ok) throw new Error(response.status === 401 || response.status === 404 ? 'This media is unavailable. Reopen the chat or sign in again.' : 'Unable to preview this media. Retry or download it.');
       const type = response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() || '';
       if (!(kind === 'image' ? imageTypes : videoTypes).has(type)) throw new Error('This file cannot be previewed here. You can still download it.');
@@ -64,7 +65,7 @@ export default function ChatAttachment({ message, onDownload }: { message: ChatM
       resource.current = URL.createObjectURL(blob); setUrl(resource.current);
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Unable to load media.'); }
     finally { if (!controller.signal.aborted) setLoading(false); if (request.current === controller) request.current = null; }
-  }, [message.conversation, message._id, kind]);
+  }, [previewPath, kind]);
   useEffect(() => {
     let cancelled = false;
     if (kind === 'image' && visible) void Promise.resolve().then(() => { if (!cancelled) void load(); });

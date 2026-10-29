@@ -11,8 +11,9 @@ export interface ChatConversation {
   name?: string;
   members: { user: ChatPerson | null; typingUntil?: string | null }[];
   unreadCount?: number;
-  lastMessage?: { text: string; createdAt: string; attachment?: { name: string } };
+  lastMessage?: { text: string; createdAt: string; attachment?: { name: string }; attachments?: { name: string }[] };
 }
+export interface ChatFile { name: string; size: number; mimeType: string }
 export interface ChatMessage {
   _id: string;
   conversation: string;
@@ -23,7 +24,25 @@ export interface ChatMessage {
   readBy: string[];
   deliveredBy?: string[];
   createdAt: string;
-  attachment?: { name: string; size: number; mimeType: string };
+  attachment?: ChatFile;
+  attachments?: ChatFile[];
+}
+export const CHAT_UPLOAD_LIMIT = 100 * 1024 * 1024;
+export const CHAT_MAX_FILES = 20;
+export function validateChatFiles(files: Pick<File, 'name' | 'size'>[]): string | null {
+  if (files.length > CHAT_MAX_FILES) return `Attach up to ${CHAT_MAX_FILES} files per message`;
+  if (files.reduce((total, file) => total + file.size, 0) > CHAT_UPLOAD_LIMIT) return 'Attachments must total 100 MB or smaller per message';
+  if (files.some(file => !/\.(png|jpe?g|webp|gif|mp4|m4v|mov|webm|pdf|txt|csv|docx|xlsx|pptx|zip)$/i.test(file.name))) return 'Use an image, MP4/MOV/WebM video, PDF, text, Office document, or ZIP file';
+  return null;
+}
+export function messageAttachments(message: ChatMessage): ChatFile[] {
+  return message.attachments?.length ? message.attachments : message.attachment?.name ? [message.attachment] : [];
+}
+export function attachmentPath(message: ChatMessage, index = 0, preview = false) {
+  const query = new URLSearchParams();
+  if (preview) query.set('preview', '1');
+  if (index) query.set('index', String(index));
+  return `/chat/conversations/${message.conversation}/messages/${message._id}/attachment${query.size ? `?${query}` : ''}`;
 }
 export function chatTitle(chat: ChatConversation, userId: string) {
   return chat.kind === 'group' ? chat.name || 'Group chat' : chat.members.find((member) => member.user?._id !== userId)?.user?.name || 'Former teammate';

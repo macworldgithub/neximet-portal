@@ -38,7 +38,7 @@ async function fixtures(page) {
 async function sendFile(page, name, mimeType, buffer) {
   await page.locator('input[type="file"]').setInputFiles({ name, mimeType, buffer });
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Remove attachment', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Remove attachment / })).toHaveCount(0);
 }
 
 for (const mobileSender of [false, true]) {
@@ -80,6 +80,70 @@ for (const mobileSender of [false, true]) {
   });
 }
 
+test('multiple file selection and drops append to the queue, support removal and reach the recipient', async ({ browser, request }) => {
+  const sender = await account(browser, request, 0), recipient = await account(browser, request, 1, true);
+  try {
+    const fixture = await fixtures(sender.page);
+    await sender.page.locator('input[type="file"]').setInputFiles([
+      { name: 'batch-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('First attachment') },
+      { name: 'batch-photo.png', mimeType: 'image/png', buffer: Buffer.from(fixture.image, 'base64') },
+    ]);
+    const panel = sender.page.getByRole('region', { name: /^Chat with / });
+    const transfer = await sender.page.evaluateHandle(() => {
+      const data = new DataTransfer(); data.items.add(new File(['Second document'], 'dropped.txt', { type: 'text/plain' }));
+      data.items.add(new File(['Remove me'], 'remove.txt', { type: 'text/plain' })); return data;
+    });
+    await panel.dispatchEvent('dragenter', { dataTransfer: transfer });
+    await expect(sender.page.getByText('Drop files to attach', { exact: true })).toBeVisible();
+    await panel.dispatchEvent('dragover', { dataTransfer: transfer });
+    await panel.dispatchEvent('drop', { dataTransfer: transfer });
+    await expect(sender.page.getByText('Drop files to attach', { exact: true })).toHaveCount(0);
+    await expect(sender.page.getByRole('button', { name: /^Remove attachment / })).toHaveCount(4);
+    await sender.page.getByRole('button', { name: 'Remove attachment remove.txt', exact: true }).click();
+    await expect(sender.page.getByRole('button', { name: /^Remove attachment / })).toHaveCount(3);
+    await sender.page.screenshot({ path: 'test-results/calls/chat-multiple-queue.png' });
+    await sender.page.getByRole('button', { name: 'Send message', exact: true }).click();
+    for (const person of [sender, recipient]) {
+      const preview = person.page.getByRole('button', { name: 'View photo batch-photo.png', exact: true });
+      await expect(preview).toBeVisible(); await expect.poll(() => preview.locator('img').evaluate(image => image.naturalWidth)).toBe(640);
+      for (const name of ['batch-notes.txt', 'dropped.txt']) {
+        const downloading = person.page.waitForEvent('download');
+        await person.page.getByRole('button').filter({ hasText: name }).click();
+        expect((await downloading).suggestedFilename()).toBe(name);
+      }
+      expect(await person.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await recipient.page.reload();
+    await expect(recipient.page.getByRole('button', { name: 'View photo batch-photo.png', exact: true })).toBeVisible();
+    await recipient.page.screenshot({ path: 'test-results/calls/chat-multiple-recipient.png' });
+    expect(sender.errors).toEqual([]); expect(recipient.errors).toEqual([]);
+  } finally { await sender.context.close(); await recipient.context.close(); }
+});
+
+test('invalid drop batches preserve the draft and queued files', async ({ browser, request }) => {
+  const person = await account(browser, request, 0);
+  try {
+    const input = person.page.getByRole('textbox', { name: 'Message', exact: true });
+    await input.fill('Keep this draft');
+    await person.page.locator('input[type="file"]').setInputFiles({ name: 'keep.txt', mimeType: 'text/plain', buffer: Buffer.from('Keep this file') });
+    const panel = person.page.getByRole('region', { name: /^Chat with / });
+    for (const mode of ['type', 'size', 'count']) {
+      const transfer = await person.page.evaluateHandle(mode => {
+        const data = new DataTransfer();
+        if (mode === 'size') data.items.add(new File([new Uint8Array(100 * 1024 * 1024)], 'big.zip'));
+        else for (let index = 0; index < (mode === 'count' ? 20 : 1); index++) data.items.add(new File(['file'], mode === 'type' ? 'bad.html' : `${index}.txt`));
+        return data;
+      }, mode);
+      await panel.dispatchEvent('drop', { dataTransfer: transfer });
+      await expect(panel.getByRole('alert')).toContainText(mode === 'size' ? '100 MB' : mode === 'count' ? '20 files' : 'Use an image');
+      await expect(person.page.getByRole('button', { name: /^Remove attachment / })).toHaveCount(1);
+      await expect(input).toHaveValue('Keep this draft');
+      await transfer.dispose();
+    }
+    expect(person.errors).toEqual([]);
+  } finally { await person.context.close(); }
+});
+
 test('failed previews can retry and documents retain a private download', async ({ browser, request }) => {
   const person = await account(browser, request, 0, true);
   try {
@@ -99,7 +163,7 @@ test('failed previews can retry and documents retain a private download', async 
     await expect(card.getByRole('button', { name: 'View photo retry-photo.png', exact: true })).toBeVisible();
     await sendFile(person.page, 'notes.txt', 'text/plain', Buffer.from('Private team notes'));
     const download = person.page.waitForEvent('download');
-    await person.page.getByRole('button').filter({ hasText: 'notes.txt' }).click();
+    await person.page.getByRole('button', { name: /^notes\.txt / }).click();
     expect((await download).suggestedFilename()).toBe('notes.txt');
     expect(person.errors).toEqual([]);
   } finally { await person.context.close(); }
