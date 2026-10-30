@@ -4,6 +4,7 @@ const project = { _id: id, title: 'Brand website', code: 'NX-WEB-01', client: cl
 const invoice = { _id: 'aa'.repeat(12), number: 'NX-2026-TEST', client: clientId, currency: 'USD', status: 'issued', issuedAt: '2026-10-29', dueAt: '2026-11-29', subtotal: 1000, taxRate: 5, tax: 50, total: 1050, items: [{ description: 'Website development', quantity: 2, rate: 500, amount: 1000 }], billTo: { name: 'Client User', email: 'client@example.test', company: 'Acme Studio', address: 'Example billing address' }, paymentDetails: 'Bank transfer, reference invoice number', notes: 'Thank you for working with Neximet.' };
 async function mock(page, role = 'Client') {
   const writes = [], requests = [], errors = [];
+  const projects = [structuredClone(project)];
   const tasks = [{ _id: taskId, title: 'Homepage design', description: 'Responsive landing page', status: 'in_progress', priority: 'High', clientVisible: true, deadline: '2026-11-10', ...(role !== 'Client' ? { assignedTo: { _id: 'bb'.repeat(12), name: 'Internal Designer' } } : {}) }];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem('neximet_token', 'portal-ui-test-token'));
@@ -18,13 +19,15 @@ async function mock(page, role = 'Client') {
     if (path === '/chat/push/config') return json({ success: true, configured: false });
     if (method !== 'GET') {
       const body = request.postDataJSON(); writes.push({ path, method, body });
+      if (path === '/portal/projects') projects.unshift({ ...project, _id: 'ac'.repeat(12), ...body, client: clientId, status: 'planning', completionPercentage: 0, totalTasks: 0, doneTasks: 0 });
+      if (path.endsWith('/team')) { projects[0].projectManager = body.managerId; projects[0].assignedMembers = body.memberIds.map(user => ({ user })); }
       if (path.endsWith('/tasks')) tasks.push({ _id: 'cc'.repeat(12), ...body, status: 'todo', clientVisible: true });
       if (path.startsWith('/portal/tasks/')) Object.assign(tasks[0], body, body.assignedTo ? { assignedTo: { _id: body.assignedTo, name: 'Internal Designer' } } : {});
       return json({ success: true });
     }
-    if (path === '/portal/projects') return json({ success: true, projects: [project] });
+    if (path === '/portal/projects') return json({ success: true, projects });
     if (path === '/portal/invoices') return json({ success: true, invoices: [invoice] });
-    if (path === `/portal/projects/${id}/tasks`) return json({ success: true, tasks });
+    if (/^\/portal\/projects\/[a-f0-9]{24}\/tasks$/.test(path)) return json({ success: true, tasks });
     if (path === '/portal/clients') return json({ success: true, clients: [{ _id: clientId, name: 'Client User', company: 'Acme Studio', email: 'client@example.test', billingAddress: 'Example billing address', phone: '', isActive: true }] });
     if (path === '/auth/users') return json({ success: true, users: [{ _id: 'bb'.repeat(12), name: 'Internal Designer', role: 'Team Member', isActive: true }], count: 1 });
     return json({ success: true, projects: [], users: [], notifications: [], count: 0, unreadCount: 0 });
@@ -52,7 +55,7 @@ test('clients redirect away from staff pages and see only their finance controls
   const state = await mock(page); await page.goto('/employees'); await expect(page).toHaveURL(/\/client$/);
   await page.getByRole('link', { name: 'Finance', exact: true }).first().click(); await expect(page).toHaveURL(/\/client\/finance$/);
   await expect(page.getByRole('heading', { name: 'Your finances' })).toBeVisible(); await expect(page.getByRole('button', { name: 'Create invoice' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'View invoice' }).click(); await expect(page.getByRole('dialog').getByText('Website development')).toBeVisible(); await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'View invoice' }).click(); await expect(page.getByRole('dialog').getByText('Website development')).toBeVisible(); await page.screenshot({ path: 'test-results/portal-invoice-professional.png', fullPage: true }); await page.keyboard.press('Escape');
   expect(state.requests).not.toContain('/auth/users'); expect(state.errors).toEqual([]);
 });
 test('super admin creates accounts, assigns tasks, and issues invoices', async ({ page }) => {
@@ -62,8 +65,12 @@ test('super admin creates accounts, assigns tasks, and issues invoices', async (
   await page.getByRole('button', { name: 'finance', exact: true }).click(); await page.getByRole('button', { name: 'Create invoice', exact: true }).click(); dialog = page.getByRole('dialog');
   await dialog.getByRole('combobox', { name: 'Client', exact: true }).selectOption(clientId); await dialog.getByLabel('Item 1 description').fill('Development services'); await dialog.getByLabel('Item 1 rate').fill('250'); await dialog.getByLabel('Tax rate (%)').fill('5');
   await expect(dialog.getByText(/^Total.*262/)).toBeVisible();
+  await dialog.getByText('Neximet billing details', { exact: true }).click();
+  await dialog.getByLabel('Sender billing email').fill('billing@example.test');
+  await dialog.getByLabel('Reference / purchase order').fill('PO-104');
+  await dialog.getByLabel('Payment terms', { exact: true }).fill('Net 15 days');
   await dialog.getByRole('button', { name: 'Issue invoice', exact: true }).click(); await expect(dialog).toHaveCount(0);
-  const saved = state.writes.at(-1); expect(saved.path).toBe('/portal/invoices'); expect(saved.body.items[0].rate).toBe(250); expect(saved.body.clientId).toBe(clientId); expect(saved.body.taxRate).toBe(5); expect(state.errors).toEqual([]);
+  const saved = state.writes.at(-1); expect(saved.path).toBe('/portal/invoices'); expect(saved.body.items[0].rate).toBe(250); expect(saved.body.clientId).toBe(clientId); expect(saved.body.taxRate).toBe(5); expect(saved.body.issuer.email).toBe('billing@example.test'); expect(saved.body.reference).toBe('PO-104'); expect(state.errors).toEqual([]);
 });
 for (const width of [320, 390, 768]) test(`portal and invoice preview fit ${width}px screens`, async ({ page }) => {
   const state = await mock(page); await page.setViewportSize({ width, height: 844 }); await page.goto('/client'); await expect(page.getByRole('heading', { name: 'Welcome, Client' })).toBeVisible(); await noOverflow(page);
@@ -102,4 +109,21 @@ test('super admin adds an employee to an existing client conversation', async ({
   expect(state.writes.at(-1).body.participantIds).toEqual([employeeId]);
   await expect(page.getByText('Internal Designer', { exact: false })).toBeVisible();
   expect(state.errors).toEqual([]);
+});
+
+test('client creates a project and adds a task without choosing staff', async ({ page }) => {
+  const state = await mock(page); await page.goto('/client'); await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create project' });
+  await dialog.getByLabel('Project name').fill('Product launch'); await dialog.getByLabel('Project brief').fill('A new marketing website.');
+  await dialog.getByRole('combobox', { name: 'Service', exact: true }).selectOption('Software Development'); await dialog.getByLabel('Requested delivery date').fill('2026-12-01');
+  await expect(dialog.getByText('Internal assignee')).toHaveCount(0); await dialog.getByRole('button', { name: 'Create project', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Product launch' }).first()).toBeVisible();
+  const created = state.writes.find(write => write.path === '/portal/projects'); expect(created.body.title).toBe('Product launch'); expect(created.body.assignedTo).toBeUndefined();
+  await page.getByRole('button', { name: 'Assign task to Neximet' }).click(); const task = page.getByRole('dialog'); await task.getByLabel('Task title').fill('Create launch page'); await task.getByRole('button', { name: 'Submit task' }).click(); await expect(task).toHaveCount(0);
+  expect(state.writes.at(-1).path).toBe(`/portal/projects/${'ac'.repeat(12)}/tasks`); expect(state.errors).toEqual([]);
+});
+test('super admin chooses the client project team', async ({ page }) => {
+  const state = await mock(page, 'Super Admin'); await page.goto('/clients'); await page.getByText(/Project team/).click();
+  await page.getByRole('combobox', { name: 'Project lead', exact: true }).selectOption('bb'.repeat(12)); await page.getByRole('checkbox', { name: 'Internal Designer', exact: true }).check(); await page.getByRole('button', { name: 'Save project team' }).click();
+  await expect.poll(() => state.writes.find(write => write.path.endsWith('/team'))?.body).toEqual({ managerId: 'bb'.repeat(12), memberIds: ['bb'.repeat(12)] }); expect(state.errors).toEqual([]);
 });
