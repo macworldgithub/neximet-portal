@@ -210,6 +210,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
             <img
               src="/neximet-logo.avif"
               alt="Neximet"
+              height={32}
+              style={{ maxHeight: '32px', width: 'auto' }}
               className="h-8 w-auto max-w-[110px] shrink-0 object-contain drop-shadow group-hover:scale-105 transition-transform"
             />
             <span className="text-[10px] font-bold bg-[#5470F4]/20 text-[#5CC5FA] px-2 py-0.5 rounded-full border border-[#5470F4]/30">
@@ -389,7 +391,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile, drawerOnly 
         <div className="p-4 border-t border-[#1F293D] bg-[#0E1424]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <img src="/neximet-logo.avif" alt="Neximet" className="h-4 w-auto object-contain opacity-70" />
+              <img src="/neximet-logo.avif" alt="Neximet" height={16} style={{ maxHeight: '16px', width: 'auto' }} className="h-4 w-auto object-contain opacity-70" />
               <span className="text-[10px] text-gray-500 font-mono">v2.4 Enterprise</span>
             </div>
             <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">

@@ -67,6 +67,8 @@ export default function LoginPage() {
             <img
               src="/neximet-logo.avif"
               alt="Neximet"
+              height={40}
+              style={{ maxHeight: '40px', width: 'auto' }}
               className="h-10 w-auto object-contain drop-shadow-md"
               onError={(e) => {
                 // Fallback badge if image fails

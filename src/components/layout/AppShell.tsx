@@ -50,6 +50,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <img
             src="/neximet-logo.avif"
             alt="Neximet"
+            height={48}
+            style={{ maxHeight: '48px', width: 'auto' }}
             className="h-12 w-auto object-contain animate-pulse z-10 drop-shadow-xl"
           />
           <div className="absolute w-24 h-24 rounded-full bg-[#5470F4]/15 blur-xl animate-ping" />
