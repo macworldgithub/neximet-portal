@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Camera, Search } from 'lucide-react';
+import { Camera, Search, Pencil } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceGet, attendancePost } from '../../lib/attendanceApi';
 import { attendanceHistoryRange, attendanceTime, companyDate, attendanceExpectation, type HistoryPeriod } from '../../lib/attendance';
+import AdminEditAttendanceModal from './AdminEditAttendanceModal';
 
 type Record = {
   _id: string; __v?: number; date: string; user: { _id: string; name: string; department: string; designation?: string } | null;
@@ -28,8 +29,10 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
   onChanged?: () => Promise<void>;
   inspectPhoto: (id: string, name: string, department: string) => Promise<void>;
 }) {
-  const { user } = useAuth();
-  const canViewPay = user?.role === 'CEO';
+  const { user, hasRole } = useAuth();
+  const isCEO = user?.role === 'CEO' || (hasRole ? hasRole('CEO') : false);
+  const canManageAttendance = isCEO || user?.role === 'Super Admin' || (hasRole ? hasRole('Super Admin') : false);
+  const canViewPay = isCEO;
   const [period, setPeriod] = useState<HistoryPeriod>('all');
   const [draft, setDraft] = useState({ startDate: '', endDate: '' });
   const [range, setRange] = useState(draft);
@@ -45,6 +48,7 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
   const [repairDate, setRepairDate] = useState('');
   const [repairBusy, setRepairBusy] = useState(false);
   const [absenceTarget, setAbsenceTarget] = useState<Record | null>(null);
+  const [editTarget, setEditTarget] = useState<Record | null>(null);
   const pendingAction = useRef(false);
 
   useEffect(() => {
@@ -149,10 +153,10 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
       <table className="w-full min-w-[1000px] text-left text-xs">
         <caption className="sr-only">Company attendance records matching the applied date range and employee name</caption>
         <thead className="bg-[#0B0F19] text-gray-400"><tr>
-          {['Date', 'Employee', 'Selfie', 'Check-In', 'Check-Out', 'Hours', 'Status', 'Late', ...(canViewPay ? ['Deduction'] : []), 'Reason / Notes'].map(label => <th scope="col" key={label} className="px-3 py-3">{label}</th>)}
+          {['Date', 'Employee', 'Selfie', 'Check-In', 'Check-Out', 'Hours', 'Status', 'Late', ...(canViewPay ? ['Deduction'] : []), 'Reason / Notes', ...(canManageAttendance ? ['Actions'] : [])].map(label => <th scope="col" key={label} className="px-3 py-3">{label}</th>)}
         </tr></thead>
         <tbody className="divide-y divide-[#1F293D] text-gray-300">
-          {loading ? <tr><td colSpan={canViewPay ? 10 : 9} className="p-6 text-center">Loading attendance records...</td></tr> : result.records.length ? result.records.map(record => <tr key={record._id} className="hover:bg-[#161F30]">
+          {loading ? <tr><td colSpan={canViewPay ? (canManageAttendance ? 11 : 10) : (canManageAttendance ? 10 : 9)} className="p-6 text-center">Loading attendance records...</td></tr> : result.records.length ? result.records.map(record => <tr key={record._id} className="hover:bg-[#161F30]">
             <td className="whitespace-nowrap px-3 py-3 font-mono">{record.date}</td>
             <td className="px-3 py-3"><span className="block font-semibold text-white">{record.user?.name || 'Deleted employee'}</span><span className="text-[10px] text-gray-400">{record.user?.department || '--'}</span></td>
             <td className="px-3 py-3">{record.hasPhoto ? <button className="rounded-xl border border-purple-400/40 p-2.5 text-purple-300" aria-label={`View selfie for ${record.user?.name || 'deleted employee'} on ${record.date}`} onClick={() => void inspectPhoto(record._id, record.user?.name || 'Deleted employee', record.user?.department || '')}><Camera className="h-4 w-4" /></button> : '--'}</td>
@@ -163,7 +167,20 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
             <td className="whitespace-nowrap px-3 py-3">{record.minutesLate > 0 ? `${record.minutesLate} min` : '--'}</td>
             {canViewPay && <td className="whitespace-nowrap px-3 py-3 font-mono">PKR {(record.deductionAmount || 0).toLocaleString()}{(record.quarantine?.at || record.isSimulated) && <span className="mt-1 block text-[10px] text-amber-300">Excluded from totals</span>}</td>}
             <td className="min-w-[180px] max-w-xs break-words px-3 py-3">{record.deductionReason || record.notes || '--'}{record.financialReviewRequired && !record.quarantine?.at && <><span className="mt-1 block text-amber-300">Absence deduction requires administrator review.</span>{record.user && <button disabled={repairBusy} onClick={() => setAbsenceTarget(record)} className={`${buttonClass} mt-2`}>Review absence</button>}</>}{record.quarantine?.at && <><p className="mt-2 text-amber-300">{record.quarantine.reason}</p><button className={`${buttonClass} mt-2`} disabled={!record.suggestedRepairDate || repairBusy} onClick={() => { setRepairTarget(record); setRepairDate(record.suggestedRepairDate || ''); }}>Repair working date</button></>}</td>
-          </tr>) : <tr><td colSpan={canViewPay ? 10 : 9} className="p-6 text-center">{error ? 'History unavailable.' : 'No attendance records match these filters.'}</td></tr>}
+            {canManageAttendance && (
+              <td className="whitespace-nowrap px-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => setEditTarget(record)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[#5470F4]/40 bg-[#5470F4]/15 px-2.5 py-1.5 text-[11px] font-bold text-[#5CC5FA] transition-all hover:bg-[#5470F4]/25 shadow-sm"
+                  title={`Adjust attendance times or status for ${record.user?.name || 'employee'}`}
+                >
+                  <Pencil className="h-3 w-3" />
+                  <span>Edit</span>
+                </button>
+              </td>
+            )}
+          </tr>) : <tr><td colSpan={canViewPay ? (canManageAttendance ? 11 : 10) : (canManageAttendance ? 10 : 9)} className="p-6 text-center">{error ? 'History unavailable.' : 'No attendance records match these filters.'}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -174,5 +191,17 @@ export default function CompanyAttendanceHistory({ workingDay, inspectPhoto, ref
     </div>
     {repairTarget && <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3"><form onSubmit={repair} role="dialog" aria-modal="true" aria-label="Repair legacy attendance" className="my-auto w-full max-w-md space-y-4 rounded-2xl border border-[#1F293D] bg-[#111827] p-5"><h3 className="font-bold">Repair attendance for {repairTarget.user?.name || 'former employee'}</h3><p className="text-xs text-gray-400">Correct the working date. Original arrival, photo and financial evidence are retained with an audit trail.</p><label className="block text-xs">Working date<input aria-label="Repair working date" type="date" required max={companyDate()} value={repairDate} onChange={event => setRepairDate(event.target.value)} className={`${inputClass} mt-2`} /></label>{error && <p role="alert" className="text-xs text-rose-300">{error}</p>}<div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={repairBusy} onClick={() => setRepairTarget(null)} className={buttonClass}>Cancel</button><button disabled={repairBusy} className={buttonClass}>{repairBusy ? 'Repairing…' : 'Confirm Repair'}</button></div></form></div>}
     {absenceTarget && <div className="portal-modal fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3"><div role="dialog" aria-modal="true" aria-label="Review unrecorded absence" className="my-auto w-full max-w-md space-y-4 rounded-2xl border border-[#1F293D] bg-[#111827] p-5"><h3 className="font-bold">Review {absenceTarget.user?.name} on {absenceTarget.date}</h3><p className="text-xs text-gray-300">Confirm the unexcused absence before applying its configured daily-wage deduction. Approved half-day leave caps the charge at half a wage; full-day leave, holidays and days off receive no absence charge. You can instead verify presence without a deduction. Both decisions are audited.</p>{error && <p role="alert" className="text-xs text-rose-300">{error}</p>}<div className="flex flex-wrap justify-end gap-2"><button autoFocus disabled={repairBusy} onClick={() => setAbsenceTarget(null)} className={buttonClass}>Cancel</button><button disabled={repairBusy} onClick={() => void reviewAbsence(true)} className={buttonClass}>Mark Present Without Deduction</button><button disabled={repairBusy} onClick={() => void reviewAbsence()} className={buttonClass}>{repairBusy ? 'Applying…' : 'Confirm Absence Deduction'}</button></div></div></div>}
+    {editTarget && (
+      <AdminEditAttendanceModal
+        record={editTarget}
+        isCEO={isCEO}
+        onClose={() => setEditTarget(null)}
+        onSuccess={async () => {
+          setEditTarget(null);
+          setRevision(value => value + 1);
+          await onChanged?.();
+        }}
+      />
+    )}
   </section>;
 }

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { attendanceGet as apiGet, attendancePost as apiPost } from '../../lib/attendanceApi';
 import { COMPANY_TIME_ZONE, attendanceTime, shiftTime, shiftSimulationTimestamp, rosterIsCurrent, recordedShiftEnd, attendanceBlocksCheckIn, attendanceExpectation, attendanceDisplay, distanceMeters } from '../../lib/attendance';
 import CompanyAttendanceHistory from '../../components/attendance/CompanyAttendanceHistory';
+import AdminEditAttendanceModal from '../../components/attendance/AdminEditAttendanceModal';
 import {
   Clock,
   UserCheck,
@@ -33,6 +34,7 @@ import {
   Radio,
   Lock,
   UserX,
+  Pencil,
 } from 'lucide-react';
 
 export default function AttendancePage() {
@@ -84,6 +86,7 @@ export default function AttendancePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [markingAbsentId, setMarkingAbsentId] = useState<string | null>(null);
   const [absentTarget, setAbsentTarget] = useState<{ id: string; name: string; date: string; expectedRecordId: string | null; expectedVersion: number | null } | null>(null);
+  const [editRosterTarget, setEditRosterTarget] = useState<any | null>(null);
   const overridePending = useRef(false);
 
   // CEO Simulation & Testing Sandbox State (Only accessible to CEO)
@@ -1185,36 +1188,62 @@ export default function AttendancePage() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       {canManageAttendance ? (
-                        item.quarantine?.at ? <button className="px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10" onClick={() => setActiveTab('company-history')}>Review in History</button> : item.financialReviewRequired || (item.status !== 'absent' && (item.checkedIn || ['present', 'late', 'half_day', 'not_checked_in'].includes(item.status))) ? (
-                          <>
-                          <button
-                            onClick={() => handleMarkAbsent(item.user._id, item.user.name, item.date)}
-                            disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
-                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
-                            title="Mark this employee absent for today"
-                          >
-                            <UserX className="w-3.5 h-3.5 text-rose-400" />
-                            <span>{markingAbsentId === item.user._id ? 'Updating...' : item.financialReviewRequired ? 'Review Absence' : 'Mark Absent'}</span>
-                          </button>
-                          {item.financialReviewRequired && <button disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay} onClick={() => void handleMarkPresent(item.user._id, item.user.name, item.date)} className="ml-2 px-2.5 py-1.5 text-xs font-semibold text-emerald-300">Mark Present</button>}
-                          </>
-                        ) : item.status === 'absent' ? (
-                          <div className="inline-flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-lg border border-rose-500/30">
-                              Marked Absent
-                            </span>
-                            <button
-                              onClick={() => handleMarkPresent(item.user._id, item.user.name, item.date)}
-                              disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
-                              className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
-                              title="Restore original attendance"
-                            >
-                              {item.override?.type === 'absent' ? 'Restore' : 'Mark Present'}
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-gray-500 font-mono text-[10px]">--</span>
-                        )
+                        <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                          {item.quarantine?.at ? (
+                            <button className="px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10" onClick={() => setActiveTab('company-history')}>Review in History</button>
+                          ) : (
+                            <>
+                              {item.financialReviewRequired || (item.status !== 'absent' && (item.checkedIn || ['present', 'late', 'half_day', 'not_checked_in'].includes(item.status))) ? (
+                                <>
+                                  <button
+                                    onClick={() => handleMarkAbsent(item.user._id, item.user.name, item.date)}
+                                    disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
+                                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30 transition-all inline-flex items-center gap-1.5 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                                    title="Mark this employee absent for today"
+                                  >
+                                    <UserX className="w-3.5 h-3.5 text-rose-400" />
+                                    <span>{markingAbsentId === item.user._id ? 'Updating...' : item.financialReviewRequired ? 'Review Absence' : 'Mark Absent'}</span>
+                                  </button>
+                                  {item.financialReviewRequired && (
+                                    <button
+                                      disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
+                                      onClick={() => void handleMarkPresent(item.user._id, item.user.name, item.date)}
+                                      className="px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:underline"
+                                    >
+                                      Mark Present
+                                    </button>
+                                  )}
+                                </>
+                              ) : item.status === 'absent' ? (
+                                <div className="inline-flex items-center gap-2">
+                                  <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-lg border border-rose-500/30">
+                                    Marked Absent
+                                  </span>
+                                  <button
+                                    onClick={() => handleMarkPresent(item.user._id, item.user.name, item.date)}
+                                    disabled={!!markingAbsentId || loading || !rosterReady || item.date !== companyDay}
+                                    className="text-[10px] text-emerald-400 hover:underline font-semibold cursor-pointer"
+                                    title="Restore original attendance"
+                                  >
+                                    {item.override?.type === 'absent' ? 'Restore' : 'Mark Present'}
+                                  </button>
+                                </div>
+                              ) : null}
+
+                              {/* Adjust / Edit Attendance Button */}
+                              <button
+                                type="button"
+                                onClick={() => setEditRosterTarget(item)}
+                                disabled={loading || !rosterReady || item.date !== companyDay}
+                                className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-[#5470F4]/15 text-[#5CC5FA] hover:bg-[#5470F4]/25 border border-[#5470F4]/30 transition-all inline-flex items-center gap-1 shadow-sm hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+                                title={`Adjust attendance time or status for ${item.user.name}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-[#5CC5FA]" />
+                                <span>Edit</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-500 font-mono text-[10px]">--</span>
                       )}
@@ -1449,6 +1478,23 @@ export default function AttendancePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL 3: Admin Edit Attendance Modal */}
+      {editRosterTarget && (
+        <AdminEditAttendanceModal
+          record={editRosterTarget}
+          isCEO={isCEO}
+          shiftStartTime={shift.start}
+          shiftEndTime={shift.end}
+          onClose={() => setEditRosterTarget(null)}
+          onSuccess={async () => {
+            const employeeName = editRosterTarget.user?.name || 'employee';
+            setEditRosterTarget(null);
+            await fetchAttendanceData();
+            setMsg({ type: 'success', text: `Attendance for ${employeeName} was successfully updated.` });
+          }}
+        />
       )}
     </div>
   );
